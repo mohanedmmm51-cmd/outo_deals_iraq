@@ -1,274 +1,606 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 
-void main() {
-  runApp(const AutoDealsIraqApp());
+void main()=>runApp(const App());
+
+const yellow=Color(0xFFFFD400);
+String money(int n)=>n.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'),(m)=>'${m[1]},');
+
+class Tire{
+  final String size;final int wholesale;
+  const Tire(this.size,this.wholesale);
+  int get profit=>wholesale<150000?10000:wholesale<200000?12000:15000;
+  int get commission=>wholesale<100000?3000:wholesale<150000?4000:5000;
+  int get price=>wholesale+profit+commission;
+}
+const tires=[
+Tire('500/12',67320),Tire('550/12',104040),Tire('550/13',87210),
+Tire('165/65/13',73440),Tire('175/70/13',73440),Tire('175/70/14',68850),
+Tire('185/65/14',76500),Tire('185/70/14',87210),Tire('195/70/14',88740),
+Tire('195/14',126990),Tire('185/14',104040),Tire('205/75/14 خط',119340),
+Tire('195/65/15',84150),Tire('195/65/15 كومفورس',91800),Tire('195/65/15 هلو',96390),
+Tire('205/65/15',104040),Tire('205/70/15',99450),Tire('205/70/15 خط',114750),
+Tire('215/75/15',114750),Tire('195/55/15',81090),Tire('195/60/15',81090),
+Tire('185/65/15',81090),Tire('185/55/15',81090),Tire('195/15',128520),
+Tire('195/55/16',91800),Tire('205/55/16 كومفورس',102510),Tire('205/55/16 هلو',111690),
+Tire('205/55/16',99450),Tire('215/60/16',110160)
+];
+
+class Battery{
+  final String brand,amp;final int wholesale;
+  const Battery(this.brand,this.amp,this.wholesale);
+  int get withOld=>wholesale+3000;
+  int get withoutOld=>wholesale+10000+3000;
+}
+const batteries=[
+Battery('انجيكو كوري','43 مربع',61200),Battery('انجيكو كوري','62',76500),
+Battery('انجيكو كوري','70 عالي',84150),Battery('انجيكو كوري','74',87210),
+Battery('انجيكو كوري','80 ناصي',107100),Battery('انجيكو كوري','88',107100),
+Battery('انجيكو كوري','90',99450),Battery('انجيكو كوري','100 مستطيل',114750),
+Battery('انجيكو كوري','150',175950),Battery('ماليزي','62',61200),
+Battery('ماليزي','70 عالي',68850),Battery('ماليزي','74',76500),
+Battery('ماليزي','80',81090),Battery('ماليزي','88',81090),
+Battery('ماليزي','90',81090),Battery('ماليزي','100 مستطيل',84150),
+Battery('ماليزي','100 مربع',111690),Battery('ماليزي','150',134640),
+Battery('زكستور عراقي','62',44370),Battery('زكستور عراقي','70',58140),
+Battery('زكستور عراقي','74',58140)
+];
+
+class Api{
+  static const base='https://api.vehdb.com/v1';
+  Future<dynamic> get(String path,String token)async{
+    if(token.trim().isEmpty)throw Exception('أدخل API Token من زر المفتاح.');
+    final c=HttpClient();
+    try{
+      final r=await c.getUrl(Uri.parse('$base$path'));
+      r.headers.set(HttpHeaders.authorizationHeader,'Bearer ${token.trim()}');
+      r.headers.set(HttpHeaders.acceptHeader,'application/json');
+      final res=await r.close(),body=await res.transform(utf8.decoder).join();
+      if(res.statusCode<200||res.statusCode>=300)throw Exception('VehDB HTTP ${res.statusCode}');
+      return jsonDecode(body);
+    }finally{c.close(force:true);}
+  }
+  List<String> strings(dynamic j){
+    final d=j is Map?j['data']:null;if(d is! List)return[];
+    return d.map<String?>((e){
+      if(e is String)return e;
+      if(e is Map)return '${e['make']??e['model']??e['name']??e['value']}';
+      return null;
+    }).whereType<String>().where((e)=>e!='null'&&e.isNotEmpty).toSet().toList();
+  }
+  Future<List<String>> makes(String t)=>get('/tire-sizes/makes',t).then(strings);
+  Future<List<String>> models(String t,String m)=>get('/tire-sizes/models?make=${Uri.encodeQueryComponent(m)}',t).then(strings);
+  Future<List<Car>> cars(String t,String m,String mo,int y)async{
+    final j=await get('/cars?make=${Uri.encodeQueryComponent(m)}&model=${Uri.encodeQueryComponent(mo)}&year=$y',t);
+    final d=j is Map?j['data']:null;if(d is! List)return[];
+    return d.whereType<Map>().map((e)=>Car.from(e)).toList();
+  }
+  Future<List<String>> sizes(String t,String id)async{
+    final j=await get('/cars/$id/tire-sizes',t),out=<String>{};
+    final d=j is Map?j['data']:null;if(d is! List)return[];
+    for(final e in d.whereType<Map>()){
+      final o='${e['tire_size_oem']??''}'.trim();if(o.isNotEmpty)out.add(o);
+      final a=e['alternate_tire_sizes'];
+      if(a is String)for(final s in a.split(',')){if(s.trim().isNotEmpty)out.add(s.trim());}
+      if(a is List)for(final s in a){if('$s'.trim().isNotEmpty)out.add('$s'.trim());}
+    }
+    return out.toList();
+  }
+}
+class Car{
+  final String id,make,model,trim;final int year;
+  const Car(this.id,this.make,this.model,this.year,this.trim);
+  factory Car.from(Map e)=>Car('${e['uuid']??''}','${e['make']??''}','${e['model']??''}',(e['year']as num?)?.toInt()??0,'${e['trim']??''}');
 }
 
-class AutoDealsIraqApp extends StatelessWidget {
-  const AutoDealsIraqApp({super.key});
+class App extends StatelessWidget{
+  const App({super.key});
+  Widget build(BuildContext c)=>MaterialApp(debugShowCheckedModeBanner:false,title:'إطارات وبطاريات العراق',
+    theme:ThemeData(useMaterial3:true,colorScheme:ColorScheme.fromSeed(seedColor:yellow)),home:const Home());
+}
+
+class Home extends StatelessWidget{
+  const Home({super.key});
+  Widget build(BuildContext c)=>Scaffold(
+    backgroundColor:const Color(0xfff5f5f5),
+    bottomNavigationBar:BottomNavigationBar(currentIndex:0,type:BottomNavigationBarType.fixed,backgroundColor:Color(0xff111111),selectedItemColor:yellow,unselectedItemColor:Colors.white70,
+      items:[BottomNavigationBarItem(icon:Icon(Icons.home),label:'الرئيسية'),BottomNavigationBarItem(icon:Icon(Icons.store),label:'المحلات'),BottomNavigationBarItem(icon:Icon(Icons.shopping_cart),label:'السلة'),BottomNavigationBarItem(icon:Icon(Icons.receipt_long),label:'طلباتي'),BottomNavigationBarItem(icon:Icon(Icons.person),label:'حسابي')]),
+    body:SafeArea(child:Directionality(textDirection:TextDirection.rtl,child:ListView(children:[
+      Container(padding:const EdgeInsets.fromLTRB(18,18,18,25),decoration:const BoxDecoration(color:Color(0xff101010),borderRadius:BorderRadius.vertical(bottom:Radius.circular(30))),child:const Column(children:[
+        Row(children:[Icon(Icons.menu,color:Colors.white,size:30),Spacer(),Column(children:[Text('إطارات وبطاريات العراق',style:TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.bold)),Text('الجودة .. بأقرب محل',style:TextStyle(color:Colors.white70))]),Spacer(),Icon(Icons.notifications_none,color:Colors.white,size:30)]),
+        SizedBox(height:22),DecoratedBox(decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.all(Radius.circular(16))),child:SizedBox(height:54,child:Row(children:[SizedBox(width:16),Icon(Icons.search,size:30),SizedBox(width:10),Text('شنو تحتاج؟ إطارات أو بطاريات...',style:TextStyle(color:Colors.grey,fontSize:16))])))
+      ])),
+      Padding(padding:const EdgeInsets.all(16),child:Column(children:[
+        button(c,Icons.directions_car,'اختار سيارتك','اعرف قياس الإطار المناسب لسيارتك',yellow,()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const CarsPage()))),
+        const SizedBox(height:14),
+        Row(children:[
+          Expanded(child:cat(c,Icons.tire_repair,'الإطارات',()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const TiresPage())))),
+          const SizedBox(width:12),
+          Expanded(child:cat(c,Icons.battery_charging_full,'البطاريات',()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const BatteriesPage()))))
+        ]),
+        const SizedBox(height:14),button(c,Icons.location_on,'المحلات القريبة','اعثر على أقرب محل معتمد',Colors.white,()=>{})
+      ]))
+    ])))
+  );
+  static Widget button(BuildContext c,IconData i,String t,String s,Color col,VoidCallback f)=>InkWell(onTap:f,borderRadius:BorderRadius.circular(20),child:Container(width:double.infinity,padding:const EdgeInsets.all(19),decoration:BoxDecoration(color:col,borderRadius:BorderRadius.circular(20),border:Border.all(color:Colors.black12)),child:Row(children:[Icon(i,size:45,color:Colors.black),const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(t,style:const TextStyle(fontSize:21,fontWeight:FontWeight.bold)),Text(s)])),const Icon(Icons.arrow_back_ios_new,size:18)])));
+  static Widget cat(BuildContext c,IconData i,String t,VoidCallback f)=>InkWell(onTap:f,borderRadius:BorderRadius.circular(20),child:Container(height:140,decoration:BoxDecoration(color:const Color(0xff171717),borderRadius:BorderRadius.circular(20)),child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(i,color:yellow,size:52),const SizedBox(height:10),Text(t,style:const TextStyle(color:Colors.white,fontSize:19,fontWeight:FontWeight.bold))])));
+}
+
+
+class CarsPage extends StatefulWidget {
+  const CarsPage({super.key});
+
+  @override
+  State<CarsPage> createState() => _CarsPageState();
+}
+
+class _CarsPageState extends State<CarsPage> {
+  final Api api = Api();
+  final TextEditingController token = TextEditingController();
+
+  String? make;
+  String? model;
+  int? year;
+
+  List<String> makes = [];
+  List<String> models = [];
+  List<Car> cars = [];
+
+  bool busy = false;
+  String? err;
+
+  @override
+  void dispose() {
+    token.dispose();
+    super.dispose();
+  }
+
+  void tokenDialog() {
+    final controller = TextEditingController(text: token.text);
+
+    showDialog(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          title: const Text('VehDB API'),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'API Token',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                token.text = controller.text.trim();
+                Navigator.pop(context);
+                loadMakes();
+              },
+              child: const Text('حفظ وتجربة'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> loadMakes() async {
+    setState(() {
+      busy = true;
+      err = null;
+    });
+
+    try {
+      final result = await api.makes(token.text);
+      setState(() {
+        makes = result;
+      });
+    } catch (e) {
+      setState(() {
+        err = '$e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          busy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> loadModels(String value) async {
+    setState(() {
+      make = value;
+      model = null;
+      models = [];
+      cars = [];
+      busy = true;
+      err = null;
+    });
+
+    try {
+      final result = await api.models(token.text, value);
+      setState(() {
+        models = result;
+      });
+    } catch (e) {
+      setState(() {
+        err = '$e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          busy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> searchCars() async {
+    if (make == null || model == null || year == null) return;
+
+    setState(() {
+      busy = true;
+      err = null;
+      cars = [];
+    });
+
+    try {
+      final result = await api.cars(
+        token.text,
+        make!,
+        model!,
+        year!,
+      );
+
+      setState(() {
+        cars = result;
+      });
+    } catch (e) {
+      setState(() {
+        err = '$e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          busy = false;
+        });
+      }
+    }
+  }
+
+  InputDecoration fieldDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'عروض سيارتك',
-      locale: const Locale('ar'),
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F6CBD),
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF6F7F9),
-        fontFamily: 'Arial',
+    final years = List.generate(
+      30,
+      (index) => 2026 - index,
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('اختار سيارتك'),
+        actions: [
+          IconButton(
+            onPressed: tokenDialog,
+            icon: const Icon(Icons.key),
+          ),
+        ],
       ),
-      home: const Directionality(
+      body: Directionality(
         textDirection: TextDirection.rtl,
-        child: MainShell(),
+        child: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            const Icon(
+              Icons.directions_car,
+              size: 80,
+              color: yellow,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'اختار سيارتك حتى نطلع القياس المناسب',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              onPressed: busy ? null : tokenDialog,
+              icon: const Icon(Icons.key),
+              label: Text(
+                makes.isEmpty
+                    ? 'إدخال API Token'
+                    : 'تغيير API Token',
+              ),
+            ),
+            if (makes.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                value: make,
+                isExpanded: true,
+                decoration: fieldDecoration('الشركة'),
+                items: makes
+                    .map(
+                      (item) => DropdownMenuItem<String>(
+                        value: item,
+                        child: Text(item),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    loadModels(value);
+                  }
+                },
+              ),
+            ],
+            if (models.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                value: model,
+                isExpanded: true,
+                decoration: fieldDecoration('الموديل'),
+                items: models
+                    .map(
+                      (item) => DropdownMenuItem<String>(
+                        value: item,
+                        child: Text(item),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    model = value;
+                    cars = [];
+                  });
+                },
+              ),
+            ],
+            if (model != null) ...[
+              const SizedBox(height: 14),
+              DropdownButtonFormField<int>(
+                value: year,
+                isExpanded: true,
+                decoration: fieldDecoration('السنة'),
+                items: years
+                    .map(
+                      (item) => DropdownMenuItem<int>(
+                        value: item,
+                        child: Text('$item'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    year = value;
+                    cars = [];
+                  });
+                },
+              ),
+            ],
+            const SizedBox(height: 16),
+            if (make != null && model != null && year != null)
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: yellow,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.all(16),
+                ),
+                onPressed: busy ? null : searchCars,
+                child: const Text(
+                  'بحث عن السيارة والفئة',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            if (err != null)
+              Card(
+                color: Colors.red.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Text('خطأ: $err'),
+                ),
+              ),
+            ...cars.map(
+              (car) {
+                return Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.directions_car),
+                    ),
+                    title: Text(
+                      car.trim.isEmpty
+                          ? '${car.make} ${car.model}'
+                          : car.trim,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${car.make} ${car.model} • ${car.year}',
+                    ),
+                    trailing: const Icon(
+                      Icons.arrow_back_ios_new,
+                      size: 16,
+                    ),
+                    onTap: () async {
+                      setState(() {
+                        busy = true;
+                        err = null;
+                      });
+
+                      try {
+                        final sizes = await api.sizes(
+                          token.text,
+                          car.id,
+                        );
+
+                        if (!mounted) return;
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SizesPage(
+                              car: car,
+                              sizes: sizes,
+                            ),
+                          ),
+                        );
+                      } catch (e) {
+                        if (mounted) {
+                          setState(() {
+                            err = '$e';
+                          });
+                        }
+                      } finally {
+                        if (mounted) {
+                          setState(() {
+                            busy = false;
+                          });
+                        }
+                      }
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+class SizesPage extends StatelessWidget {
+  final Car car;
+  final List<String> sizes;
 
-  @override
-  State<MainShell> createState() => _MainShellState();
-}
+  const SizesPage({
+    super.key,
+    required this.car,
+    required this.sizes,
+  });
 
-class _MainShellState extends State<MainShell> {
-  int currentIndex = 0;
+  Tire? matchSize(String remoteSize) {
+    final normalizedRemote =
+        remoteSize.toUpperCase().replaceAll(RegExp(r'[^0-9]'), '');
 
-  final List<Widget> pages = const [
-    CustomerHomePage(),
-    OffersPage(),
-    OrdersPage(),
-    MorePage(),
-  ];
+    for (final tire in tires) {
+      final normalizedLocal =
+          tire.size.toUpperCase().replaceAll(RegExp(r'[^0-9]'), '');
+
+      if (normalizedLocal == normalizedRemote ||
+          normalizedRemote.contains(normalizedLocal) ||
+          normalizedLocal.contains(normalizedRemote)) {
+        return tire;
+      }
+    }
+
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: pages[currentIndex]),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (index) {
-          setState(() => currentIndex = index);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'الرئيسية',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.local_offer_outlined),
-            selectedIcon: Icon(Icons.local_offer),
-            label: 'العروض',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'طلباتي',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.menu),
-            selectedIcon: Icon(Icons.menu_open),
-            label: 'المزيد',
-          ),
-        ],
+      appBar: AppBar(
+        title: const Text('قياسات السيارة'),
       ),
-    );
-  }
-}
-
-class CustomerHomePage extends StatelessWidget {
-  const CustomerHomePage({super.key});
-
-  void openCategory(BuildContext context, String category) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: ProductSearchPage(category: category),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const CircleAvatar(
-                radius: 24,
-                child: Icon(Icons.directions_car),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Card(
+              color: yellow,
+              child: Padding(
+                padding: const EdgeInsets.all(18),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
-                      'أهلاً بيك 👋',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      '${car.make} ${car.model}',
+                      style: const TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    SizedBox(height: 2),
                     Text(
-                      'اختار المنتج وخلي إحنا نجيبلك أفضل عرض',
-                      style: TextStyle(color: Colors.black54),
+                      car.trim.isEmpty
+                          ? '${car.year}'
+                          : '${car.year} • ${car.trim}',
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.notifications_none),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'القياسات المناسبة',
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.bold,
               ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(22),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'أفضل سعر من محلات موثوقة',
-                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'نقارن الأسعار والعروض ونرسل طلبك للمحل الأنسب، وما يطلع اسم المحل إلا بعد قبول الطلب.',
-                ),
-                const SizedBox(height: 14),
-                FilledButton.icon(
-                  onPressed: () => openCategory(context, 'الإطارات'),
-                  icon: const Icon(Icons.search),
-                  label: const Text('ابدأ البحث'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-          const Text(
-            'شنو تحتاج اليوم؟',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: CategoryCard(
-                  title: 'إطارات',
-                  subtitle: 'أفضل سعر + خدمات',
-                  icon: Icons.tire_repair,
-                  onTap: () => openCategory(context, 'الإطارات'),
+            const SizedBox(height: 8),
+            if (sizes.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Text(
+                    'ما رجع VehDB قياسات لهذه السيارة.',
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: CategoryCard(
-                  title: 'بطاريات',
-                  subtitle: 'حسب نوع السيارة',
-                  icon: Icons.battery_charging_full,
-                  onTap: () => openCategory(context, 'البطاريات'),
+            ...sizes.map((size) {
+              final tire = matchSize(size);
+              final subtitle = tire == null
+                  ? 'لا يوجد سعر لهذا القياس حاليًا'
+                  : 'سعر الزوج: ${money(tire.price)} د.ع';
+
+              return Card(
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.tire_repair,
+                    size: 34,
+                  ),
+                  title: Text(
+                    size,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: Text(subtitle),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          const Text(
-            'شلون يشتغل التطبيق؟',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          const StepTile(
-            number: '1',
-            title: 'اختار المنتج',
-            subtitle: 'حدد المقاس أو نوع السيارة والكمية.',
-          ),
-          const StepTile(
-            number: '2',
-            title: 'نجيب أفضل عرض',
-            subtitle: 'السعر النهائي ويّاه الخدمات المجانية.',
-          ),
-          const StepTile(
-            number: '3',
-            title: 'المحل يقبل الطلب',
-            subtitle: 'يوصله السعر والتفاصيل ويضغط قبول أو رفض.',
-          ),
-          const StepTile(
-            number: '4',
-            title: 'تستلم كود + QR',
-            subtitle: 'بعد القبول يظهر اسم المحل وموقعه ورمز الطلب.',
-          ),
-          const StepTile(
-            number: '5',
-            title: 'تروح للمحل',
-            subtitle: 'المحل يمسح الرمز ويؤكد تنفيذ الطلب.',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class CategoryCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const CategoryCard({
-    super.key,
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.black12),
-        ),
-        child: Column(
-          children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: Icon(icon, size: 30),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.black54),
-            ),
+              );
+            }),
           ],
         ),
       ),
@@ -276,638 +608,187 @@ class CategoryCard extends StatelessWidget {
   }
 }
 
-class StepTile extends StatelessWidget {
-  final String number;
-  final String title;
-  final String subtitle;
-
-  const StepTile({
-    super.key,
-    required this.number,
-    required this.title,
-    required this.subtitle,
-  });
+class TiresPage extends StatelessWidget {
+  const TiresPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black12),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('الإطارات'),
       ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            foregroundColor: Colors.white,
-            child: Text(number),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 3),
-                Text(subtitle, style: const TextStyle(color: Colors.black54)),
-              ],
-            ),
-          ),
-        ],
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: tires.length,
+          itemBuilder: (context, index) {
+            final tire = tires[index];
+
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.tire_repair),
+                title: Text(
+                  tire.size,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: Text(
+                  'سعر الزوج: ${money(tire.price)} د.ع',
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-class ProductSearchPage extends StatefulWidget {
-  final String category;
-
-  const ProductSearchPage({super.key, required this.category});
-
-  @override
-  State<ProductSearchPage> createState() => _ProductSearchPageState();
-}
-
-class _ProductSearchPageState extends State<ProductSearchPage> {
-  String brand = 'تويوتا';
-  String model = 'كامري';
-  String year = '2022';
-  String quantity = '4';
-  String size = '215/55 R17';
+class BatteriesPage extends StatelessWidget {
+  const BatteriesPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final isTire = widget.category == 'الإطارات';
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('البطاريات'),
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: batteries.length,
+          itemBuilder: (context, index) {
+            final battery = batteries[index];
+
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.battery_charging_full),
+                title: Text(
+                  '${battery.brand} ${battery.amp}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: const Text(
+                  'اختيار البطارية القديمة',
+                ),
+                trailing: const Icon(
+                  Icons.arrow_back_ios_new,
+                  size: 16,
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BatteryPage(
+                        b: battery,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class BatteryPage extends StatefulWidget {
+  final Battery b;
+
+  const BatteryPage({
+    super.key,
+    required this.b,
+  });
+
+  @override
+  State<BatteryPage> createState() => _BatteryPageState();
+}
+
+class _BatteryPageState extends State<BatteryPage> {
+  bool old = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final price = old
+        ? widget.b.withOld
+        : widget.b.withoutOld;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.category),
+        title: const Text('تفاصيل البطارية'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
           children: [
-            const Text(
-              'حدد تفاصيل طلبك',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'راح نستخدم هالمعلومات حتى نقارن أسعار المحلات ونجيبلك أفضل عرض.',
-              style: TextStyle(color: Colors.black54),
-            ),
-            const SizedBox(height: 18),
-            AppDropdown(
-              label: 'شركة السيارة',
-              value: brand,
-              items: const ['تويوتا', 'نيسان', 'كيا', 'هيونداي', 'شفروليه'],
-              onChanged: (v) => setState(() => brand = v!),
-            ),
-            AppDropdown(
-              label: 'الموديل',
-              value: model,
-              items: const ['كامري', 'كورولا', 'لاندكروزر', 'سوناتا', 'سبورتج'],
-              onChanged: (v) => setState(() => model = v!),
-            ),
-            AppDropdown(
-              label: 'السنة',
-              value: year,
-              items: const ['2026', '2025', '2024', '2023', '2022', '2021'],
-              onChanged: (v) => setState(() => year = v!),
-            ),
-            if (isTire)
-              AppDropdown(
-                label: 'مقاس الإطار',
-                value: size,
-                items: const [
-                  '195/65 R15',
-                  '205/55 R16',
-                  '215/55 R17',
-                  '225/60 R18',
-                  '265/65 R17',
-                ],
-                onChanged: (v) => setState(() => size = v!),
-              ),
-            AppDropdown(
-              label: 'الكمية',
-              value: quantity,
-              items: const ['1', '2', '4'],
-              onChanged: (v) => setState(() => quantity = v!),
-            ),
-            const SizedBox(height: 6),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => Directionality(
-                      textDirection: TextDirection.rtl,
-                      child: BestOfferPage(
-                        category: widget.category,
-                        quantity: quantity,
-                        detail: isTire ? size : '$brand $model $year',
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Icon(
+                      Icons.battery_charging_full,
+                      size: 80,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${widget.b.brand} ${widget.b.amp}',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.price_check),
-              label: const Text('شوف أفضل عرض'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class AppDropdown extends StatelessWidget {
-  final String label;
-  final String value;
-  final List<String> items;
-  final ValueChanged<String?> onChanged;
-
-  const AppDropdown({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: DropdownButtonFormField<String>(
-        value: value,
-        decoration: InputDecoration(
-          labelText: label,
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-        items: items
-            .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-            .toList(),
-        onChanged: onChanged,
-      ),
-    );
-  }
-}
-
-class BestOfferPage extends StatelessWidget {
-  final String category;
-  final String quantity;
-  final String detail;
-
-  const BestOfferPage({
-    super.key,
-    required this.category,
-    required this.quantity,
-    required this.detail,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final totalPrice = category == 'الإطارات' ? 480000 : 135000;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('أفضل عرض')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.black12),
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.workspace_premium, size: 46),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'أفضل عرض متوفر',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 14),
-                  DetailRow(label: 'المنتج', value: category),
-                  DetailRow(label: 'التفاصيل', value: detail),
-                  DetailRow(label: 'الكمية', value: quantity),
-                  DetailRow(
-                    label: 'السعر النهائي',
-                    value: '${formatPrice(totalPrice)} د.ع',
-                  ),
-                  const Divider(height: 28),
-                  const Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'يشمل العرض:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    const SizedBox(height: 16),
+                    RadioListTile<bool>(
+                      value: true,
+                      groupValue: old,
+                      title: const Text(
+                        'أسلّم البطارية القديمة',
+                      ),
+                      onChanged: (_) {
+                        setState(() {
+                          old = true;
+                        });
+                      },
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  const BenefitTile(text: 'شد وتركيب مجاني'),
-                  const BenefitTile(text: 'بلنص مجاني'),
-                  const BenefitTile(text: 'سعر خاص لمستخدمي التطبيق'),
-                ],
-              ),
-            ),
-            const Spacer(),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const Directionality(
-                      textDirection: TextDirection.rtl,
-                      child: WaitingForShopPage(),
+                    RadioListTile<bool>(
+                      value: false,
+                      groupValue: old,
+                      title: const Text(
+                        'بدون البطارية القديمة',
+                      ),
+                      onChanged: (_) {
+                        setState(() {
+                          old = false;
+                        });
+                      },
                     ),
-                  ),
-                );
-              },
-              child: const Text('إرسال الطلب للمحل'),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'اسم المحل ما يظهر إلا بعد ما يقبل الطلب.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-String formatPrice(int value) {
-  final text = value.toString();
-  final buffer = StringBuffer();
-  for (int i = 0; i < text.length; i++) {
-    if (i > 0 && (text.length - i) % 3 == 0) {
-      buffer.write(',');
-    }
-    buffer.write(text[i]);
-  }
-  return buffer.toString();
-}
-
-class DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const DetailRow({super.key, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(label, style: const TextStyle(color: Colors.black54)),
-          ),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-}
-
-class BenefitTile extends StatelessWidget {
-  final String text;
-
-  const BenefitTile({super.key, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Icon(
-            Icons.check_circle,
-            color: Theme.of(context).colorScheme.primary,
-            size: 20,
-          ),
-          const SizedBox(width: 8),
-          Text(text),
-        ],
-      ),
-    );
-  }
-}
-
-class WaitingForShopPage extends StatelessWidget {
-  const WaitingForShopPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('تأكيد الطلب')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Spacer(),
-            const CircularProgressIndicator(),
-            const SizedBox(height: 22),
-            const Text(
-              'جاري إرسال الطلب للمحل...',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'المحل راح يشوف تفاصيل الطلب والسعر ويختار قبول أو رفض.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54),
-            ),
-            const SizedBox(height: 28),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const Directionality(
-                      textDirection: TextDirection.rtl,
-                      child: AcceptedOrderPage(),
+                    const Divider(),
+                    const SizedBox(height: 10),
+                    const Text('السعر النهائي'),
+                    Text(
+                      '${money(price)} د.ع',
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
                     ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.bolt),
-              label: const Text('محاكاة قبول المحل'),
-            ),
-            const Spacer(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class AcceptedOrderPage extends StatelessWidget {
-  const AcceptedOrderPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    const orderCode = '482731';
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('تم قبول الطلب')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.black12),
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.check_circle, size: 58, color: Colors.green),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'المحل قبل طلبك',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  const DetailRow(label: 'المحل', value: 'مركز بغداد للإطارات'),
-                  const DetailRow(label: 'السعر', value: '480,000 د.ع'),
-                  const DetailRow(label: 'الخدمات', value: 'شد + بلنص مجاني'),
-                  const DetailRow(label: 'العنوان', value: 'بغداد - الكرادة'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    'كود الطلب',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    orderCode,
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 5,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Container(
-                    width: 190,
-                    height: 190,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.black12),
-                    ),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.qr_code_2, size: 125),
-                        SizedBox(height: 4),
-                        Text('QR تجريبي'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'خلي صاحب المحل يمسح الرمز عند وصولك.',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class OffersPage extends StatelessWidget {
-  const OffersPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: const [
-        Text(
-          'العروض',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-        SizedBox(height: 14),
-        OfferCard(
-          title: '4 إطارات + شد وبلنص مجاني',
-          subtitle: 'عرض خاص لمستخدمي التطبيق',
-          price: '480,000 د.ع',
-        ),
-        OfferCard(
-          title: 'بطارية مع فحص دينمو',
-          subtitle: 'فحص مجاني عند التركيب',
-          price: '135,000 د.ع',
-        ),
-      ],
-    );
-  }
-}
-
-class OfferCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final String price;
-
-  const OfferCard({
-    super.key,
-    required this.title,
-    required this.subtitle,
-    required this.price,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            const CircleAvatar(child: Icon(Icons.local_offer)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text(subtitle, style: const TextStyle(color: Colors.black54)),
-                ],
-              ),
-            ),
-            Text(price, style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class OrdersPage extends StatelessWidget {
-  const OrdersPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'طلباتي',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 14),
-        Card(
-          child: ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.tire_repair)),
-            title: const Text('طلب إطارات'),
-            subtitle: const Text('تم قبول الطلب • 480,000 د.ع'),
-            trailing: const Icon(Icons.chevron_left),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const Directionality(
-                    textDirection: TextDirection.rtl,
-                    child: AcceptedOrderPage(),
-                  ),
+                  ],
                 ),
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         ),
-      ],
-    );
-  }
-}
-
-class MorePage extends StatelessWidget {
-  const MorePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'المزيد',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 14),
-        const Card(
-          child: ListTile(
-            leading: Icon(Icons.person_outline),
-            title: Text('حسابي'),
-            trailing: Icon(Icons.chevron_left),
-          ),
-        ),
-        const Card(
-          child: ListTile(
-            leading: Icon(Icons.location_on_outlined),
-            title: Text('عناويني'),
-            trailing: Icon(Icons.chevron_left),
-          ),
-        ),
-        const Card(
-          child: ListTile(
-            leading: Icon(Icons.support_agent),
-            title: Text('الدعم'),
-            trailing: Icon(Icons.chevron_left),
-          ),
-        ),
-        const SizedBox(height: 18),
-        const Text(
-          'واجهة أصحاب المحلات',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          onPressed: null,
-          icon: Icon(Icons.storefront),
-          label: Text('سنربطها بحساب المحل بالمرحلة القادمة'),
-        ),
-      ],
+      ),
     );
   }
 }
