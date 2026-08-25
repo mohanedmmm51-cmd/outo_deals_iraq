@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'commerce_pages.dart' as commerce;
 import 'expert_features_backup.dart' as expert;
 import 'legacy_main.dart' as legacy;
 import 'order_system.dart';
 
-void main() => runApp(const App());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(const App());
+}
 
 const yellow = Color(0xFFFFD400);
 
