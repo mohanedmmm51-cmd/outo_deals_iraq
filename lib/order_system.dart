@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:barcode_widget/barcode_widget.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _ordersKey = 'auto_deals_orders_v1';
+const _ordersCollection = 'orders';
 const orderYellow = Color(0xFFFFD400);
 
 String _money(int n) => n.toString().replaceAllMapped(
@@ -60,6 +62,17 @@ class AppOrder {
         'completedAt': completedAt?.toIso8601String(),
       };
 
+  Map<String, dynamic> toFirestore() => {
+        'code': code,
+        'title': title,
+        'detail': detail,
+        'price': price,
+        'commission': commission,
+        'createdAt': Timestamp.fromDate(createdAt),
+        'completed': completed,
+        'completedAt': completedAt == null ? null : Timestamp.fromDate(completedAt!),
+      };
+
   factory AppOrder.fromJson(Map<String, dynamic> json) => AppOrder(
         code: '${json['code'] ?? ''}',
         title: '${json['title'] ?? ''}',
@@ -72,10 +85,39 @@ class AppOrder {
             ? null
             : DateTime.tryParse('${json['completedAt']}'),
       );
+
+  factory AppOrder.fromFirestore(Map<String, dynamic> json) {
+    DateTime parseDate(dynamic value) {
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      return DateTime.tryParse('$value') ?? DateTime.now();
+    }
+
+    DateTime? parseNullableDate(dynamic value) {
+      if (value == null) return null;
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      return DateTime.tryParse('$value');
+    }
+
+    return AppOrder(
+      code: '${json['code'] ?? ''}',
+      title: '${json['title'] ?? ''}',
+      detail: '${json['detail'] ?? ''}',
+      price: (json['price'] as num?)?.toInt() ?? 0,
+      commission: (json['commission'] as num?)?.toInt() ?? 0,
+      createdAt: parseDate(json['createdAt']),
+      completed: json['completed'] == true,
+      completedAt: parseNullableDate(json['completedAt']),
+    );
+  }
 }
 
 class OrderStore {
-  static Future<List<AppOrder>> load() async {
+  static CollectionReference<Map<String, dynamic>> get _remote =>
+      FirebaseFirestore.instance.collection(_ordersCollection);
+
+  static Future<List<AppOrder>> _loadLocal() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_ordersKey);
     if (raw == null || raw.trim().isEmpty) return [];
@@ -94,12 +136,29 @@ class OrderStore {
     }
   }
 
-  static Future<void> _save(List<AppOrder> orders) async {
+  static Future<void> _saveLocal(List<AppOrder> orders) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _ordersKey,
       jsonEncode(orders.map((e) => e.toJson()).toList()),
     );
+  }
+
+  static Future<List<AppOrder>> load() async {
+    try {
+      final snap = await _remote.orderBy('createdAt', descending: true).limit(100).get();
+      final remoteOrders = snap.docs
+          .map((d) => AppOrder.fromFirestore(d.data()))
+          .where((e) => e.code.isNotEmpty)
+          .toList();
+      if (remoteOrders.isNotEmpty) {
+        await _saveLocal(remoteOrders);
+        return remoteOrders;
+      }
+    } catch (_) {
+      // إذا ماكو إنترنت أو صار خطأ مؤقت، نرجع للنسخة المحلية.
+    }
+    return _loadLocal();
   }
 
   static Future<AppOrder> create({
@@ -116,15 +175,32 @@ class OrderStore {
       commission: commission,
       createdAt: DateTime.now(),
     );
-    final orders = await load();
-    orders.insert(0, order);
-    await _save(orders);
+
+    final local = await _loadLocal();
+    local.removeWhere((e) => e.code == order.code);
+    local.insert(0, order);
+    await _saveLocal(local);
+
+    await _remote.doc(order.code).set(order.toFirestore());
     return order;
   }
 
   static Future<AppOrder?> findByCode(String code) async {
     final normalized = code.trim().toUpperCase();
-    final orders = await load();
+    if (normalized.isEmpty) return null;
+
+    try {
+      final doc = await _remote.doc(normalized).get();
+      if (doc.exists && doc.data() != null) {
+        final order = AppOrder.fromFirestore(doc.data()!);
+        await _upsertLocal(order);
+        return order;
+      }
+    } catch (_) {
+      // fallback local
+    }
+
+    final orders = await _loadLocal();
     for (final order in orders) {
       if (order.code.toUpperCase() == normalized) return order;
     }
@@ -133,7 +209,34 @@ class OrderStore {
 
   static Future<AppOrder?> confirm(String code) async {
     final normalized = code.trim().toUpperCase();
-    final orders = await load();
+    if (normalized.isEmpty) return null;
+
+    try {
+      final docRef = _remote.doc(normalized);
+      final result = await FirebaseFirestore.instance.runTransaction<AppOrder?>((tx) async {
+        final snap = await tx.get(docRef);
+        if (!snap.exists || snap.data() == null) return null;
+
+        final current = AppOrder.fromFirestore(snap.data()!);
+        if (current.completed) return current;
+
+        final completedAt = DateTime.now();
+        tx.update(docRef, {
+          'completed': true,
+          'completedAt': Timestamp.fromDate(completedAt),
+        });
+        return current.copyWith(completed: true, completedAt: completedAt);
+      });
+
+      if (result != null) {
+        await _upsertLocal(result);
+        return result;
+      }
+    } catch (_) {
+      // fallback local
+    }
+
+    final orders = await _loadLocal();
     final index = orders.indexWhere((e) => e.code.toUpperCase() == normalized);
     if (index < 0) return null;
 
@@ -143,9 +246,21 @@ class OrderStore {
         completed: true,
         completedAt: DateTime.now(),
       );
-      await _save(orders);
+      await _saveLocal(orders);
     }
     return orders[index];
+  }
+
+  static Future<void> _upsertLocal(AppOrder order) async {
+    final orders = await _loadLocal();
+    final index = orders.indexWhere((e) => e.code == order.code);
+    if (index >= 0) {
+      orders[index] = order;
+    } else {
+      orders.insert(0, order);
+    }
+    orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    await _saveLocal(orders);
   }
 }
 
@@ -265,7 +380,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                     child: Padding(
                       padding: EdgeInsets.all(16),
                       child: Text(
-                        'سلّم الكود لصاحب المحل قبل بدء العمل. بعد تأكيده يتحول الطلب إلى منفّذ وتُحتسب عمولة التطبيق.',
+                        'سلّم الكود لصاحب المحل قبل بدء العمل. الطلب محفوظ أونلاين، وبعد تأكيده يتحول إلى منفّذ وتُحتسب عمولة التطبيق.',
                         textAlign: TextAlign.center,
                       ),
                     ),
