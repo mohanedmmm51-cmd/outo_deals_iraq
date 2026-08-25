@@ -5,6 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'shop_dashboard.dart';
+import 'shop_store.dart';
+
 const _ordersKey = 'auto_deals_orders_v1';
 const _ordersCollection = 'orders';
 const orderYellow = Color(0xFFFFD400);
@@ -28,6 +31,8 @@ class AppOrder {
   final DateTime createdAt;
   final bool completed;
   final DateTime? completedAt;
+  final String shopId;
+  final String shopName;
 
   const AppOrder({
     required this.code,
@@ -38,9 +43,17 @@ class AppOrder {
     required this.createdAt,
     this.completed = false,
     this.completedAt,
+    this.shopId = '',
+    this.shopName = '',
   });
 
-  AppOrder copyWith({bool? completed, DateTime? completedAt}) => AppOrder(
+  AppOrder copyWith({
+    bool? completed,
+    DateTime? completedAt,
+    String? shopId,
+    String? shopName,
+  }) =>
+      AppOrder(
         code: code,
         title: title,
         detail: detail,
@@ -49,6 +62,8 @@ class AppOrder {
         createdAt: createdAt,
         completed: completed ?? this.completed,
         completedAt: completedAt ?? this.completedAt,
+        shopId: shopId ?? this.shopId,
+        shopName: shopName ?? this.shopName,
       );
 
   Map<String, dynamic> toJson() => {
@@ -60,6 +75,8 @@ class AppOrder {
         'createdAt': createdAt.toIso8601String(),
         'completed': completed,
         'completedAt': completedAt?.toIso8601String(),
+        'shopId': shopId,
+        'shopName': shopName,
       };
 
   Map<String, dynamic> toFirestore() => {
@@ -71,6 +88,10 @@ class AppOrder {
         'createdAt': Timestamp.fromDate(createdAt),
         'completed': completed,
         'completedAt': completedAt == null ? null : Timestamp.fromDate(completedAt!),
+        'shopId': shopId,
+        'shopName': shopName,
+        'settlementId': '',
+        'settlementStatus': '',
       };
 
   factory AppOrder.fromJson(Map<String, dynamic> json) => AppOrder(
@@ -84,6 +105,8 @@ class AppOrder {
         completedAt: json['completedAt'] == null
             ? null
             : DateTime.tryParse('${json['completedAt']}'),
+        shopId: '${json['shopId'] ?? ''}',
+        shopName: '${json['shopName'] ?? ''}',
       );
 
   factory AppOrder.fromFirestore(Map<String, dynamic> json) {
@@ -109,6 +132,8 @@ class AppOrder {
       createdAt: parseDate(json['createdAt']),
       completed: json['completed'] == true,
       completedAt: parseNullableDate(json['completedAt']),
+      shopId: '${json['shopId'] ?? ''}',
+      shopName: '${json['shopName'] ?? ''}',
     );
   }
 }
@@ -155,9 +180,7 @@ class OrderStore {
         await _saveLocal(remoteOrders);
         return remoteOrders;
       }
-    } catch (_) {
-      // إذا ماكو إنترنت أو صار خطأ مؤقت، نرجع للنسخة المحلية.
-    }
+    } catch (_) {}
     return _loadLocal();
   }
 
@@ -196,9 +219,7 @@ class OrderStore {
         await _upsertLocal(order);
         return order;
       }
-    } catch (_) {
-      // fallback local
-    }
+    } catch (_) {}
 
     final orders = await _loadLocal();
     for (final order in orders) {
@@ -207,7 +228,11 @@ class OrderStore {
     return null;
   }
 
-  static Future<AppOrder?> confirm(String code) async {
+  static Future<AppOrder?> confirm(
+    String code, {
+    required String shopId,
+    required String shopName,
+  }) async {
     final normalized = code.trim().toUpperCase();
     if (normalized.isEmpty) return null;
 
@@ -218,23 +243,39 @@ class OrderStore {
         if (!snap.exists || snap.data() == null) return null;
 
         final current = AppOrder.fromFirestore(snap.data()!);
-        if (current.completed) return current;
+        if (current.completed) {
+          if (current.shopId.isEmpty) {
+            tx.update(docRef, {
+              'shopId': shopId,
+              'shopName': shopName,
+            });
+            return current.copyWith(shopId: shopId, shopName: shopName);
+          }
+          return current;
+        }
 
         final completedAt = DateTime.now();
         tx.update(docRef, {
           'completed': true,
           'completedAt': Timestamp.fromDate(completedAt),
+          'shopId': shopId,
+          'shopName': shopName,
+          'settlementId': '',
+          'settlementStatus': '',
         });
-        return current.copyWith(completed: true, completedAt: completedAt);
+        return current.copyWith(
+          completed: true,
+          completedAt: completedAt,
+          shopId: shopId,
+          shopName: shopName,
+        );
       });
 
       if (result != null) {
         await _upsertLocal(result);
         return result;
       }
-    } catch (_) {
-      // fallback local
-    }
+    } catch (_) {}
 
     final orders = await _loadLocal();
     final index = orders.indexWhere((e) => e.code.toUpperCase() == normalized);
@@ -245,6 +286,8 @@ class OrderStore {
       orders[index] = current.copyWith(
         completed: true,
         completedAt: DateTime.now(),
+        shopId: shopId,
+        shopName: shopName,
       );
       await _saveLocal(orders);
     }
@@ -467,8 +510,20 @@ class ShopConfirmOrderPage extends StatefulWidget {
 class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
   final controller = TextEditingController();
   AppOrder? found;
+  ShopProfile? shop;
   String? message;
   bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadShop();
+  }
+
+  Future<void> _loadShop() async {
+    final value = await ShopStore.load();
+    if (mounted) setState(() => shop = value);
+  }
 
   Future<void> _search() async {
     FocusScope.of(context).unfocus();
@@ -488,13 +543,32 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
 
   Future<void> _confirm() async {
     if (found == null) return;
+    final currentShop = await ShopStore.load();
+    if (currentShop == null) {
+      if (!mounted) return;
+      setState(() => message = 'أنشئ حساب المحل أولاً حتى تنحسب العمولة على المحل الصحيح');
+      return;
+    }
+
+    if (found!.completed &&
+        found!.shopId.isNotEmpty &&
+        found!.shopId != currentShop.id) {
+      setState(() => message = 'هذا الطلب منفذ ومسجل على محل آخر');
+      return;
+    }
+
     setState(() => busy = true);
-    final result = await OrderStore.confirm(found!.code);
+    final result = await OrderStore.confirm(
+      found!.code,
+      shopId: currentShop.id,
+      shopName: currentShop.name,
+    );
     if (!mounted) return;
     setState(() {
       busy = false;
       found = result;
-      message = result == null ? 'تعذر تأكيد الطلب' : 'تم تأكيد تنفيذ الطلب بنجاح';
+      shop = currentShop;
+      message = result == null ? 'تعذر تأكيد الطلب' : 'تم تأكيد تنفيذ الطلب وتسجيل العمولة على حساب المحل';
     });
   }
 
@@ -507,12 +581,46 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('تأكيد طلب الزبون')),
+      appBar: AppBar(
+        title: const Text('تأكيد طلب الزبون'),
+        actions: [
+          IconButton(
+            tooltip: 'حساب المحل والعمولات',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ShopDashboardPage()),
+              );
+              _loadShop();
+            },
+            icon: const Icon(Icons.account_balance_wallet),
+          ),
+        ],
+      ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: ListView(
           padding: const EdgeInsets.all(18),
           children: [
+            Card(
+              color: shop == null ? Colors.orange.shade100 : Colors.green.shade100,
+              child: ListTile(
+                leading: Icon(shop == null ? Icons.warning_amber : Icons.store),
+                title: Text(shop == null ? 'ماكو حساب محل على هذا الجهاز' : shop!.name),
+                subtitle: Text(shop == null
+                    ? 'أنشئ حساب المحل قبل تأكيد الطلبات.'
+                    : 'رقم المحل: ${shop!.id}'),
+                trailing: const Icon(Icons.arrow_back_ios_new, size: 16),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ShopDashboardPage()),
+                  );
+                  _loadShop();
+                },
+              ),
+            ),
+            const SizedBox(height: 14),
             const Text(
               'أدخل كود الزبون قبل تنفيذ الخدمة',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -560,6 +668,8 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
                       const SizedBox(height: 6),
                       Text('السعر للزبون: ${_money(found!.price)} د.ع'),
                       Text('عمولة التطبيق: ${_money(found!.commission)} د.ع'),
+                      if (found!.shopName.isNotEmpty)
+                        Text('المحل المنفذ: ${found!.shopName}'),
                       const SizedBox(height: 12),
                       if (found!.completed)
                         const Chip(
