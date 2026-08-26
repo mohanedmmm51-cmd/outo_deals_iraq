@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'marketplace_features.dart';
+import 'operations_features.dart';
 import 'shop_dashboard.dart';
 import 'shop_store.dart';
 
@@ -19,8 +20,8 @@ String _money(int n) => n.toString().replaceAllMapped(
     );
 
 String createOrderCode() {
-  final stamp = DateTime.now().millisecondsSinceEpoch.toString();
-  return 'ADI-${stamp.substring(stamp.length - 8)}';
+  final now = DateTime.now().microsecondsSinceEpoch.toString();
+  return 'ADI-${now.substring(now.length - 10)}';
 }
 
 class AppOrder {
@@ -34,6 +35,8 @@ class AppOrder {
   final DateTime? completedAt;
   final String shopId;
   final String shopName;
+  final String status;
+  final DateTime? expiresAt;
 
   const AppOrder({
     required this.code,
@@ -46,6 +49,8 @@ class AppOrder {
     this.completedAt,
     this.shopId = '',
     this.shopName = '',
+    this.status = 'new',
+    this.expiresAt,
   });
 
   AppOrder copyWith({
@@ -53,6 +58,8 @@ class AppOrder {
     DateTime? completedAt,
     String? shopId,
     String? shopName,
+    String? status,
+    DateTime? expiresAt,
   }) => AppOrder(
         code: code,
         title: title,
@@ -64,6 +71,8 @@ class AppOrder {
         completedAt: completedAt ?? this.completedAt,
         shopId: shopId ?? this.shopId,
         shopName: shopName ?? this.shopName,
+        status: status ?? this.status,
+        expiresAt: expiresAt ?? this.expiresAt,
       );
 
   Map<String, dynamic> toJson() => {
@@ -77,6 +86,8 @@ class AppOrder {
         'completedAt': completedAt?.toIso8601String(),
         'shopId': shopId,
         'shopName': shopName,
+        'status': status,
+        'expiresAt': expiresAt?.toIso8601String(),
       };
 
   Map<String, dynamic> toFirestore() => {
@@ -90,6 +101,8 @@ class AppOrder {
         'completedAt': completedAt == null ? null : Timestamp.fromDate(completedAt!),
         'shopId': shopId,
         'shopName': shopName,
+        'status': status,
+        'expiresAt': expiresAt == null ? null : Timestamp.fromDate(expiresAt!),
         'settlementId': '',
         'settlementStatus': '',
       };
@@ -105,6 +118,8 @@ class AppOrder {
         completedAt: json['completedAt'] == null ? null : DateTime.tryParse('${json['completedAt']}'),
         shopId: '${json['shopId'] ?? ''}',
         shopName: '${json['shopName'] ?? ''}',
+        status: '${json['status'] ?? (json['completed'] == true ? 'completed' : 'new')}',
+        expiresAt: json['expiresAt'] == null ? null : DateTime.tryParse('${json['expiresAt']}'),
       );
 
   factory AppOrder.fromFirestore(Map<String, dynamic> json) {
@@ -121,6 +136,7 @@ class AppOrder {
       return DateTime.tryParse('$value');
     }
 
+    final completed = json['completed'] == true;
     return AppOrder(
       code: '${json['code'] ?? ''}',
       title: '${json['title'] ?? ''}',
@@ -128,16 +144,19 @@ class AppOrder {
       price: (json['price'] as num?)?.toInt() ?? 0,
       commission: (json['commission'] as num?)?.toInt() ?? 0,
       createdAt: parseDate(json['createdAt']),
-      completed: json['completed'] == true,
+      completed: completed,
       completedAt: parseNullableDate(json['completedAt']),
       shopId: '${json['shopId'] ?? ''}',
       shopName: '${json['shopName'] ?? ''}',
+      status: '${json['status'] ?? (completed ? 'completed' : 'new')}',
+      expiresAt: parseNullableDate(json['expiresAt']),
     );
   }
 }
 
 class OrderStore {
-  static CollectionReference<Map<String, dynamic>> get _remote => FirebaseFirestore.instance.collection(_ordersCollection);
+  static CollectionReference<Map<String, dynamic>> get _remote =>
+      FirebaseFirestore.instance.collection(_ordersCollection);
 
   static Future<List<AppOrder>> _loadLocal() async {
     final prefs = await SharedPreferences.getInstance();
@@ -160,15 +179,24 @@ class OrderStore {
   }
 
   static Future<List<AppOrder>> load() async {
-    try {
-      final snap = await _remote.orderBy('createdAt', descending: true).limit(100).get();
-      final remoteOrders = snap.docs.map((d) => AppOrder.fromFirestore(d.data())).where((e) => e.code.isNotEmpty).toList();
-      if (remoteOrders.isNotEmpty) {
-        await _saveLocal(remoteOrders);
-        return remoteOrders;
+    final local = await _loadLocal();
+    if (local.isEmpty) return local;
+    final refreshed = <AppOrder>[];
+    for (final owned in local.take(100)) {
+      try {
+        final doc = await _remote.doc(owned.code).get();
+        if (doc.exists && doc.data() != null) {
+          refreshed.add(AppOrder.fromFirestore(doc.data()!));
+        } else {
+          refreshed.add(owned);
+        }
+      } catch (_) {
+        refreshed.add(owned);
       }
-    } catch (_) {}
-    return _loadLocal();
+    }
+    refreshed.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    await _saveLocal(refreshed);
+    return refreshed;
   }
 
   static Future<AppOrder> create({
@@ -179,15 +207,18 @@ class OrderStore {
     required String shopId,
     required String shopName,
   }) async {
+    final now = DateTime.now();
     final order = AppOrder(
       code: createOrderCode(),
       title: title,
       detail: detail,
       price: price,
       commission: commission,
-      createdAt: DateTime.now(),
+      createdAt: now,
       shopId: shopId,
       shopName: shopName,
+      status: 'new',
+      expiresAt: now.add(const Duration(hours: 24)),
     );
     final local = await _loadLocal();
     local.removeWhere((e) => e.code == order.code);
@@ -201,6 +232,7 @@ class OrderStore {
       'orderCode': order.code,
       'createdAt': FieldValue.serverTimestamp(),
     });
+    await AuditLogService.record(action: 'order_created', targetType: 'order', targetId: order.code, details: shopName);
     return order;
   }
 
@@ -225,50 +257,48 @@ class OrderStore {
   static Future<AppOrder?> confirm(String code, {required String shopId, required String shopName}) async {
     final normalized = code.trim().toUpperCase();
     if (normalized.isEmpty) return null;
-    try {
-      final docRef = _remote.doc(normalized);
-      final result = await FirebaseFirestore.instance.runTransaction<AppOrder?>((tx) async {
-        final snap = await tx.get(docRef);
-        if (!snap.exists || snap.data() == null) return null;
-        final current = AppOrder.fromFirestore(snap.data()!);
-        if (current.shopId.isNotEmpty && current.shopId != shopId) {
-          throw StateError('هذا الطلب مخصص لمحل آخر');
-        }
-        if (current.completed) return current;
-        final completedAt = DateTime.now();
-        tx.update(docRef, {
-          'completed': true,
-          'completedAt': Timestamp.fromDate(completedAt),
-          'shopId': shopId,
-          'shopName': shopName,
-          'settlementId': '',
-          'settlementStatus': '',
-        });
-        return current.copyWith(completed: true, completedAt: completedAt, shopId: shopId, shopName: shopName);
-      });
-      if (result != null) {
-        await _upsertLocal(result);
-        return result;
+    final docRef = _remote.doc(normalized);
+    final result = await FirebaseFirestore.instance.runTransaction<AppOrder?>((tx) async {
+      final snap = await tx.get(docRef);
+      if (!snap.exists || snap.data() == null) return null;
+      final current = AppOrder.fromFirestore(snap.data()!);
+      if (current.shopId.isNotEmpty && current.shopId != shopId) {
+        throw StateError('هذا الطلب مخصص لمحل آخر');
       }
-    } on StateError {
-      rethrow;
-    } catch (_) {}
-    final orders = await _loadLocal();
-    final index = orders.indexWhere((e) => e.code.toUpperCase() == normalized);
-    if (index < 0) return null;
-    final current = orders[index];
-    if (current.shopId.isNotEmpty && current.shopId != shopId) throw StateError('هذا الطلب مخصص لمحل آخر');
-    if (!current.completed) {
-      orders[index] = current.copyWith(completed: true, completedAt: DateTime.now(), shopId: shopId, shopName: shopName);
-      await _saveLocal(orders);
+      if (current.status == 'cancelled') throw StateError('هذا الطلب ملغي');
+      if (current.expiresAt != null && DateTime.now().isAfter(current.expiresAt!) && !current.completed) {
+        tx.update(docRef, {'status': 'expired'});
+        throw StateError('انتهت صلاحية كود الطلب');
+      }
+      if (current.completed) return current;
+      final completedAt = DateTime.now();
+      tx.update(docRef, {
+        'completed': true,
+        'completedAt': Timestamp.fromDate(completedAt),
+        'status': 'completed',
+        'statusUpdatedAt': FieldValue.serverTimestamp(),
+        'shopId': shopId,
+        'shopName': shopName,
+        'settlementId': '',
+        'settlementStatus': '',
+      });
+      return current.copyWith(completed: true, completedAt: completedAt, status: 'completed', shopId: shopId, shopName: shopName);
+    });
+    if (result != null) {
+      await _upsertLocal(result);
+      await AuditLogService.record(action: 'order_completed', targetType: 'order', targetId: result.code, details: shopName);
     }
-    return orders[index];
+    return result;
   }
 
   static Future<void> _upsertLocal(AppOrder order) async {
     final orders = await _loadLocal();
     final index = orders.indexWhere((e) => e.code == order.code);
-    if (index >= 0) orders[index] = order; else orders.insert(0, order);
+    if (index >= 0) {
+      orders[index] = order;
+    } else {
+      orders.insert(0, order);
+    }
     orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     await _saveLocal(orders);
   }
@@ -302,14 +332,14 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   Future<void> _loadShops() async {
     try {
       final snap = await FirebaseFirestore.instance.collection('shops').where('approved', isEqualTo: true).get();
-      if (mounted) setState(() => shops = snap.docs);
+      if (mounted) setState(() => shops = snap.docs.where((d) => d.data()['status'] != 'suspended').toList());
     } catch (e) {
       if (mounted) setState(() { shops = []; error = e.toString(); });
     }
   }
 
   Future<void> _create() async {
-    if (selectedShopId == null) return;
+    if (selectedShopId == null || shops == null) return;
     final shop = shops!.firstWhere((d) => d.id == selectedShopId);
     setState(() { busy = true; error = null; });
     try {
@@ -330,69 +360,43 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(order == null ? 'اختيار المحل' : 'كود الطلب')),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: order == null ? _buildShopChooser() : _buildTicket(),
-      ),
-    );
-  }
-
-  Widget _buildShopChooser() {
-    if (shops == null) return const Center(child: CircularProgressIndicator());
-    if (shops!.isEmpty) {
-      return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(error ?? 'ماكو محلات معتمدة حالياً. لازم الإدارة توافق على محل أولاً.', textAlign: TextAlign.center)));
-    }
-    return ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        Card(color: orderYellow, child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(widget.title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)), Text('السعر النهائي: ${_money(widget.price)} د.ع')]))),
-        const SizedBox(height: 14),
-        const Text('اختار المحل اللي تريد يوصله الطلب', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        ...shops!.map((d) {
-          final data = d.data();
-          return RadioListTile<String>(
-            value: d.id,
-            groupValue: selectedShopId,
-            title: Text('${data['name'] ?? ''}'),
-            subtitle: Text('${data['phone'] ?? ''}'),
-            onChanged: (v) => setState(() => selectedShopId = v),
-          );
-        }),
-        const SizedBox(height: 12),
-        FilledButton.icon(onPressed: busy || selectedShopId == null ? null : _create, icon: const Icon(Icons.qr_code_2), label: Text(busy ? 'جاري إنشاء الطلب...' : 'تأكيد المحل وإنشاء الكود')),
-        if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, textAlign: TextAlign.center)),
-      ],
-    );
-  }
-
-  Widget _buildTicket() => ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          Card(color: orderYellow, child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(order!.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text(order!.detail),
-            const SizedBox(height: 6),
-            Text('المحل: ${order!.shopName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text('السعر النهائي: ${_money(order!.price)} د.ع', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-          ]))),
-          const SizedBox(height: 18),
-          const Text('كود الزيارة/الشراء', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          SelectableText(order!.code, textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          Center(child: BarcodeWidget(barcode: Barcode.qrCode(), data: order!.code, width: 200, height: 200)),
-          const SizedBox(height: 20),
-          Center(child: BarcodeWidget(barcode: Barcode.code128(), data: order!.code, width: 290, height: 90, drawText: true)),
-          const SizedBox(height: 18),
-          const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('هذا الطلب مربوط بالمحل المختار فقط. سلّم الكود للمحل قبل بدء العمل.', textAlign: TextAlign.center))),
-        ],
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text(order == null ? 'اختيار المحل' : 'كود الطلب')),
+        body: Directionality(textDirection: TextDirection.rtl, child: order == null ? _chooser() : _ticket()),
       );
+
+  Widget _chooser() {
+    if (shops == null) return const Center(child: CircularProgressIndicator());
+    if (shops!.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(error ?? 'ماكو محلات معتمدة حالياً', textAlign: TextAlign.center)));
+    return ListView(padding: const EdgeInsets.all(18), children: [
+      Card(color: orderYellow, child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(widget.title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)), Text('السعر النهائي: ${_money(widget.price)} د.ع')]))),
+      const SizedBox(height: 12),
+      const Text('اختار المحل', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      ...shops!.map((d) => RadioListTile<String>(value: d.id, groupValue: selectedShopId, title: Text('${d.data()['name'] ?? ''}'), subtitle: Text('${d.data()['phone'] ?? ''}'), onChanged: (v) => setState(() => selectedShopId = v))),
+      FilledButton.icon(onPressed: busy || selectedShopId == null ? null : _create, icon: const Icon(Icons.qr_code_2), label: Text(busy ? 'جاري إنشاء الطلب...' : 'إنشاء الكود')),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, textAlign: TextAlign.center)),
+    ]);
+  }
+
+  Widget _ticket() => ListView(padding: const EdgeInsets.all(18), children: [
+    Card(color: orderYellow, child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(order!.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      Text(order!.detail),
+      Text('المحل: ${order!.shopName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+      Text('السعر النهائي: ${_money(order!.price)} د.ع', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 4),
+      const Text('صلاحية الكود: 24 ساعة'),
+    ]))),
+    const SizedBox(height: 18),
+    const Text('كود الزيارة/الشراء', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+    SelectableText(order!.code, textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 18),
+    Center(child: BarcodeWidget(barcode: Barcode.qrCode(), data: order!.code, width: 200, height: 200)),
+    const SizedBox(height: 18),
+    Center(child: BarcodeWidget(barcode: Barcode.code128(), data: order!.code, width: 290, height: 90, drawText: true)),
+    const SizedBox(height: 12),
+    FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => OrderActionsPage(orderCode: order!.code))), icon: const Icon(Icons.manage_search), label: const Text('إدارة ومشاركة الطلب')),
+  ]);
 }
 
 class MyOrdersPage extends StatefulWidget {
@@ -408,36 +412,37 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
   Future<void> _load() async { final data = await OrderStore.load(); if (mounted) setState(() => orders = data); }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('طلباتي')),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: orders == null
-            ? const Center(child: CircularProgressIndicator())
-            : orders!.isEmpty
-                ? const Center(child: Text('ما عندك طلبات لحد الآن'))
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(14),
-                      itemCount: orders!.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final o = orders![index];
-                        return Card(child: ListTile(
-                          leading: CircleAvatar(backgroundColor: o.completed ? Colors.green : orderYellow, child: Icon(o.completed ? Icons.check : Icons.receipt_long, color: Colors.black)),
-                          title: Text(o.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('${o.code}\n${o.shopName.isEmpty ? '' : '${o.shopName} • '}${_money(o.price)} د.ع • ${o.completed ? 'تم التنفيذ' : 'بانتظار المحل'}'),
-                          isThreeLine: true,
-                          trailing: o.completed && o.shopId.isNotEmpty ? IconButton(icon: const Icon(Icons.star_rate), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RatingPage(orderCode: o.code, shopId: o.shopId, shopName: o.shopName)))) : null,
-                        ));
-                      },
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('طلباتي')),
+        body: Directionality(
+          textDirection: TextDirection.rtl,
+          child: orders == null
+              ? const Center(child: CircularProgressIndicator())
+              : orders!.isEmpty
+                  ? const Center(child: Text('ما عندك طلبات لحد الآن'))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(14),
+                        itemCount: orders!.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final o = orders![index];
+                          var status = o.status;
+                          if (o.expiresAt != null && DateTime.now().isAfter(o.expiresAt!) && !o.completed && status != 'cancelled') status = 'expired';
+                          return Card(child: ListTile(
+                            onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => OrderActionsPage(orderCode: o.code))); _load(); },
+                            leading: CircleAvatar(backgroundColor: status == 'completed' ? Colors.green : orderYellow, child: Icon(status == 'completed' ? Icons.check : Icons.receipt_long, color: Colors.black)),
+                            title: Text(o.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text('${o.code}\n${o.shopName} • ${_money(o.price)} د.ع • ${orderStatusLabel(status)}'),
+                            isThreeLine: true,
+                            trailing: o.completed && o.shopId.isNotEmpty ? IconButton(icon: const Icon(Icons.star_rate), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RatingPage(orderCode: o.code, shopId: o.shopId, shopName: o.shopName)))) : const Icon(Icons.arrow_back_ios_new, size: 16),
+                          ));
+                        },
+                      ),
                     ),
-                  ),
-      ),
-    );
-  }
+        ),
+      );
 }
 
 class ShopConfirmOrderPage extends StatefulWidget {
@@ -474,7 +479,7 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
     try {
       final result = await OrderStore.confirm(found!.code, shopId: currentShop.id, shopName: currentShop.name);
       if (!mounted) return;
-      setState(() { found = result; shop = currentShop; message = result == null ? 'تعذر تأكيد الطلب' : 'تم تأكيد تنفيذ الطلب وتسجيل العمولة'; });
+      setState(() { found = result; shop = currentShop; message = result == null ? 'تعذر تأكيد الطلب' : 'تم تنفيذ الطلب وتسجيل العمولة'; });
     } catch (e) {
       if (mounted) setState(() => message = e.toString());
     } finally {
@@ -486,49 +491,35 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
   void dispose() { controller.dispose(); super.dispose(); }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('تأكيد طلب الزبون'), actions: [IconButton(tooltip: 'حساب المحل والعمولات', onPressed: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopDashboardPage())); _loadShop(); }, icon: const Icon(Icons.account_balance_wallet))]),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: ListView(
-          padding: const EdgeInsets.all(18),
-          children: [
-            Card(color: shop == null ? Colors.orange.shade100 : Colors.green.shade100, child: ListTile(
-              leading: Icon(shop == null ? Icons.warning_amber : Icons.store),
-              title: Text(shop == null ? 'ماكو حساب محل على هذا الجهاز' : shop!.name),
-              subtitle: Text(shop == null ? 'سجل دخول المحل قبل تأكيد الطلبات.' : 'رقم المحل: ${shop!.id}'),
-              trailing: const Icon(Icons.arrow_back_ios_new, size: 16),
-              onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopDashboardPage())); _loadShop(); },
-            )),
-            const SizedBox(height: 14),
-            const Text('أدخل كود الزبون قبل تنفيذ الخدمة', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('تأكيد طلب الزبون'), actions: [IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopDashboardPage())), icon: const Icon(Icons.account_balance_wallet))]),
+        body: Directionality(
+          textDirection: TextDirection.rtl,
+          child: ListView(padding: const EdgeInsets.all(18), children: [
+            Card(color: shop == null ? Colors.orange.shade100 : Colors.green.shade100, child: ListTile(leading: Icon(shop == null ? Icons.warning_amber : Icons.store), title: Text(shop == null ? 'ماكو حساب محل' : shop!.name), subtitle: Text(shop == null ? 'سجل دخول المحل أولاً' : 'رقم المحل: ${shop!.id}'))),
             const SizedBox(height: 12),
-            TextField(controller: controller, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'مثال: ADI-12345678', border: OutlineInputBorder(), prefixIcon: Icon(Icons.qr_code)), onSubmitted: (_) => _search()),
-            const SizedBox(height: 12),
+            TextField(controller: controller, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'كود الطلب', border: OutlineInputBorder(), prefixIcon: Icon(Icons.qr_code)), onSubmitted: (_) => _search()),
+            const SizedBox(height: 10),
             FilledButton.icon(onPressed: busy ? null : _search, icon: const Icon(Icons.search), label: const Text('فحص الكود')),
-            if (busy) ...[const SizedBox(height: 18), const Center(child: CircularProgressIndicator())],
-            if (message != null) ...[const SizedBox(height: 14), Text(message!, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold))],
+            if (busy) ...[const SizedBox(height: 16), const Center(child: CircularProgressIndicator())],
+            if (message != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(message!, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold))),
             if (found != null) ...[
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
               Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(found!.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 6),
                 Text(found!.detail),
-                const SizedBox(height: 6),
-                Text('المحل المطلوب: ${found!.shopName.isEmpty ? 'غير محدد' : found!.shopName}'),
-                Text('السعر للزبون: ${_money(found!.price)} د.ع'),
-                Text('عمولة التطبيق: ${_money(found!.commission)} د.ع'),
-                const SizedBox(height: 12),
+                Text('المحل المطلوب: ${found!.shopName}'),
+                Text('السعر: ${_money(found!.price)} د.ع'),
+                Text('العمولة: ${_money(found!.commission)} د.ع'),
+                Text('الحالة: ${orderStatusLabel(found!.status)}'),
+                const SizedBox(height: 10),
                 if (found!.completed)
-                  const Chip(avatar: Icon(Icons.check_circle), label: Text('تم تنفيذ هذا الطلب'))
+                  const Chip(avatar: Icon(Icons.check_circle), label: Text('تم تنفيذ الطلب'))
                 else
                   SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: busy ? null : _confirm, icon: const Icon(Icons.check_circle), label: const Text('تأكيد تم تنفيذ الطلب'))),
               ]))),
             ],
-          ],
+          ]),
         ),
-      ),
-    );
-  }
+      );
 }
