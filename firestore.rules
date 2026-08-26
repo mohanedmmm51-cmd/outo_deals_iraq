@@ -33,13 +33,36 @@ service cloud.firestore {
       allow create: if isShop() && request.resource.data.ownerUid == request.auth.uid;
       allow update: if isAdmin() || (isShop() && resource.data.ownerUid == request.auth.uid);
       allow delete: if isAdmin();
+
+      match /inventory/{itemId} {
+        allow read: if true;
+        allow create, update, delete: if isAdmin() || (isShop() && shopId() == id);
+      }
+
+      match /branches/{branchId} {
+        allow read: if true;
+        allow create, update, delete: if isAdmin() || (isShop() && shopId() == id);
+      }
     }
 
     match /orders/{code} {
       allow create: if true;
-      allow read: if true;
-      allow update: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow get: if true;
+      allow list: if isAdmin() || isShop();
+      allow update: if isAdmin()
+        || (isShop() && resource.data.shopId == shopId())
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'statusUpdatedAt', 'cancelledAt'
+          ])
+          && request.resource.data.status in ['on_the_way', 'cancelled']
+        );
       allow delete: if isAdmin();
+
+      match /notes/{noteId} {
+        allow read, create: if true;
+        allow update, delete: if isAdmin();
+      }
     }
 
     match /settlements/{id} {
@@ -56,20 +79,34 @@ service cloud.firestore {
     }
 
     match /size_requests/{id} {
-      allow create, read: if true;
+      allow create, get: if true;
+      allow list: if isAdmin() || isShop();
       allow update: if isAdmin() || isShop();
       allow delete: if isAdmin();
     }
 
     match /ratings/{orderCode} {
-      allow create, read: if true;
+      allow create, get: if true;
+      allow list: if true;
       allow update, delete: if isAdmin();
     }
 
     match /notifications/{id} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if true;
       allow create: if true;
       allow update, delete: if isAdmin();
+    }
+
+    match /price_rules/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /audit_logs/{id} {
+      allow read: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if false;
     }
   }
 }
