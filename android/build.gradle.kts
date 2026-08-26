@@ -15,8 +15,18 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
 subprojects {
     project.evaluationDependsOn(":app")
+
+    plugins.withId("com.android.library") {
+        if (project.name == "firebase_auth") {
+            dependencies.add(
+                "implementation",
+                "org.checkerframework:checker-qual:3.49.5"
+            )
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {
