@@ -9,6 +9,7 @@ import 'legacy_main.dart' as legacy;
 import 'marketplace_features.dart';
 import 'operations_features.dart';
 import 'order_system.dart';
+import 'production_features.dart';
 import 'shop_dashboard.dart';
 import 'shop_store.dart';
 
@@ -16,6 +17,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   await NotificationService.init();
+  await ProductionServices.init();
   runApp(const App());
 }
 
@@ -135,6 +137,8 @@ class Home extends StatelessWidget {
                     const SizedBox(height: 14),
                     actionButton(context, Icons.auto_awesome, 'الخدمات المتقدمة', 'مفضلة + حجز + كوبونات + إحالة + فاتورة + صور + مقارنة + تنبيهات', yellow, () => _open(context, const AdvancedHubPage())),
                     const SizedBox(height: 14),
+                    actionButton(context, Icons.recommend, 'أفضل المحلات إلك', 'ترتيب ذكي حسب القرب والتقييم والتوفر وسرعة التنفيذ', yellow, () => _open(context, const SmartShopRankingPage())),
+                    const SizedBox(height: 14),
                     actionButton(context, Icons.receipt_long, 'طلباتي', 'الحالة + الإلغاء + الملاحظات + المشاركة + التقييم', Colors.white, () => _open(context, const MyOrdersPage())),
                     const SizedBox(height: 14),
                     actionButton(context, Icons.storefront, 'بوابة صاحب المحل', 'الطلبات + المخزون + الفروع + العمولات', Colors.white, () => _open(context, const ShopPortalPage())),
@@ -150,6 +154,8 @@ class Home extends StatelessWidget {
                     actionButton(context, Icons.notifications_active, 'الإشعارات', 'طلبات جديدة وتحديثات المحلات', Colors.white, () => _open(context, const NotificationCenterPage())),
                     const SizedBox(height: 14),
                     actionButton(context, Icons.support_agent, 'التواصل مع الدعم', 'مساعدة واستفسارات', Colors.white, () => _open(context, const legacy.SupportPage())),
+                    const SizedBox(height: 14),
+                    actionButton(context, Icons.monitor_heart, 'حالة النظام', 'Crashlytics + Performance + Remote Config + البيئة الحالية', Colors.white, () => _open(context, const ProductionStatusPage())),
                     const SizedBox(height: 14),
                     actionButton(context, Icons.admin_panel_settings, 'لوحة الإدارة', 'تقارير + بحث + أسعار + إحصائيات + سجل نشاط', Colors.white, () => _open(context, const AdminAccessPage())),
                   ],
@@ -277,6 +283,8 @@ class _ShopPortalPageState extends State<ShopPortalPage> {
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryManagementPage())), icon: const Icon(Icons.inventory_2), label: const Text('إدارة المخزون')),
             const SizedBox(height: 12),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BranchManagementPage())), icon: const Icon(Icons.account_tree), label: const Text('فروع المحل')),
+            const SizedBox(height: 12),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopHoursPage())), icon: const Icon(Icons.schedule), label: const Text('ساعات العمل والعطل')),
             const SizedBox(height: 12),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopAdvancedToolsPage())), icon: const Icon(Icons.auto_fix_high), label: const Text('أدوات المحل المتقدمة')),
             const SizedBox(height: 12),
