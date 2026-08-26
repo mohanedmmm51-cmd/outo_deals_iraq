@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return signedIn() && userDoc().data.role == 'admin';
+    }
+
+    function isShop() {
+      return signedIn() && userDoc().data.role == 'shop';
+    }
+
+    function shopId() {
+      return userDoc().data.shopId;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /shops/{id} {
+      allow read: if true;
+      allow create: if isShop() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isAdmin() || (isShop() && resource.data.ownerUid == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{code} {
+      allow create: if true;
+      allow read: if true;
+      allow update: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow delete: if isAdmin();
+    }
+
+    match /settlements/{id} {
+      allow read: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow create: if isShop() && request.resource.data.shopId == shopId();
+      allow update, delete: if isAdmin();
+    }
+
+    match /offers/{id} {
+      allow read: if resource.data.approved == true || isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow create: if isShop() && request.resource.data.shopId == shopId();
+      allow update: if isAdmin() || (isShop() && resource.data.shopId == shopId() && resource.data.approved != true);
+      allow delete: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+    }
+
+    match /size_requests/{id} {
+      allow create, read: if true;
+      allow update: if isAdmin() || isShop();
+      allow delete: if isAdmin();
+    }
+
+    match /ratings/{orderCode} {
+      allow create, read: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{id} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+  }
+}
