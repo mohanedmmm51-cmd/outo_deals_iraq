@@ -1,14 +1,18 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
 
 import 'commerce_pages.dart' as commerce;
 import 'expert_features_backup.dart' as expert;
 import 'legacy_main.dart' as legacy;
+import 'marketplace_features.dart';
 import 'order_system.dart';
+import 'shop_dashboard.dart';
+import 'shop_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await NotificationService.init();
   runApp(const App());
 }
 
@@ -50,15 +54,15 @@ class Home extends StatelessWidget {
         unselectedItemColor: Colors.white70,
         onTap: (index) {
           if (index == 1) {
-            _open(context, const legacy.NearbyShopsPage());
+            _open(context, const OnlineNearbyShopsPage());
           } else if (index == 2) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('السلة راح نربطها بالمرحلة الجاية')),
+              const SnackBar(content: Text('السلة راح نربطها بمرحلة المنتجات متعددة العناصر')),
             );
           } else if (index == 3) {
             _open(context, const MyOrdersPage());
           } else if (index == 4) {
-            _open(context, const ShopPortalPage());
+            _open(context, const ShopAuthPage());
           }
         },
         items: const [
@@ -80,24 +84,27 @@ class Home extends StatelessWidget {
                   color: Color(0xff101010),
                   borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.menu, color: Colors.white, size: 30),
-                        Spacer(),
-                        Column(
+                        const Icon(Icons.menu, color: Colors.white, size: 30),
+                        const Spacer(),
+                        const Column(
                           children: [
                             Text('إطارات وبطاريات العراق', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                             Text('الجودة .. بأقرب محل', style: TextStyle(color: Colors.white70)),
                           ],
                         ),
-                        Spacer(),
-                        Icon(Icons.notifications_none, color: Colors.white, size: 30),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => _open(context, const NotificationCenterPage()),
+                          icon: const Icon(Icons.notifications_none, color: Colors.white, size: 30),
+                        ),
                       ],
                     ),
-                    SizedBox(height: 22),
-                    DecoratedBox(
+                    const SizedBox(height: 22),
+                    const DecoratedBox(
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.all(Radius.circular(16))),
                       child: SizedBox(
                         height: 54,
@@ -123,19 +130,23 @@ class Home extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.receipt_long, 'طلباتي', 'تابع كود الطلب وحالة التنفيذ', Colors.white, () => _open(context, const MyOrdersPage())),
+                    actionButton(context, Icons.receipt_long, 'طلباتي', 'تابع كود الطلب وحالة التنفيذ والتقييم', Colors.white, () => _open(context, const MyOrdersPage())),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.storefront, 'بوابة صاحب المحل', 'فحص كود الزبون وتأكيد تنفيذ الطلب', Colors.white, () => _open(context, const ShopPortalPage())),
+                    actionButton(context, Icons.storefront, 'بوابة صاحب المحل', 'تسجيل دخول + الطلبات + العمولات والتسويات', Colors.white, () => _open(context, const ShopPortalPage())),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.straighten, 'طلب قياس', 'ما لكيت القياس؟ أرسل طلب للمحلات', yellow, () => _open(context, const expert.RequestSizePage())),
+                    actionButton(context, Icons.straighten, 'طلب قياس', 'ما لكيت القياس؟ أرسل الطلب للمحلات أونلاين', yellow, () => _open(context, const OnlineSizeRequestPage())),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.location_on, 'المحلات القريبة', 'المسافة + الأقرب + الاتجاهات', Colors.white, () => _open(context, const legacy.NearbyShopsPage())),
+                    actionButton(context, Icons.location_on, 'المحلات القريبة', 'GPS + المسافة + ترتيب الأقرب + الاتجاهات', Colors.white, () => _open(context, const OnlineNearbyShopsPage())),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.add_business, 'إضافة محل', 'طلب انضمام لأصحاب المحلات', Colors.white, () => _open(context, const legacy.AddShopPage())),
+                    actionButton(context, Icons.add_business, 'إضافة محل', 'إنشاء حساب محل وإرسال طلب الاعتماد', Colors.white, () => _open(context, const ShopAuthPage())),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.local_offer, 'العروض والخصومات', 'شوف أحدث العروض المتوفرة', Colors.white, () => _open(context, const legacy.OffersPage())),
+                    actionButton(context, Icons.local_offer, 'العروض والخصومات', 'العروض المعتمدة من المحلات', Colors.white, () => _open(context, const OnlineOffersPage())),
+                    const SizedBox(height: 14),
+                    actionButton(context, Icons.notifications_active, 'الإشعارات', 'طلبات جديدة وتحديثات المحلات', Colors.white, () => _open(context, const NotificationCenterPage())),
                     const SizedBox(height: 14),
                     actionButton(context, Icons.support_agent, 'التواصل مع الدعم', 'مساعدة واستفسارات', Colors.white, () => _open(context, const legacy.SupportPage())),
+                    const SizedBox(height: 14),
+                    actionButton(context, Icons.admin_panel_settings, 'لوحة الإدارة', 'المحلات والطلبات والتسويات', Colors.white, () => _open(context, const AdminLoginPage())),
                   ],
                 ),
               ),
@@ -207,8 +218,26 @@ class BatteryCategoryIcon extends StatelessWidget {
   }
 }
 
-class ShopPortalPage extends StatelessWidget {
+class ShopPortalPage extends StatefulWidget {
   const ShopPortalPage({super.key});
+  @override
+  State<ShopPortalPage> createState() => _ShopPortalPageState();
+}
+
+class _ShopPortalPageState extends State<ShopPortalPage> {
+  ShopProfile? shop;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final p = await ShopStore.load();
+    if (mounted) setState(() => shop = p);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -218,11 +247,31 @@ class ShopPortalPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(18),
           children: [
-            const Card(color: yellow, child: Padding(padding: EdgeInsets.all(18), child: Column(children: [Icon(Icons.storefront, size: 70), SizedBox(height: 8), Text('تأكيد الطلب قبل تنفيذ الخدمة', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), SizedBox(height: 6), Text('صاحب المحل يفحص كود الزبون، وبعد التنفيذ يؤكد الطلب حتى تُسجّل العملية والعمولة.', textAlign: TextAlign.center)]))),
+            Card(
+              color: yellow,
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(children: [
+                  const Icon(Icons.storefront, size: 70),
+                  const SizedBox(height: 8),
+                  Text(shop == null ? 'سجل دخول المحل' : shop!.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text(shop == null ? 'الحساب يحمي الطلبات ويحسب العمولة على المحل الصحيح.' : 'رقم المحل: ${shop!.id}', textAlign: TextAlign.center),
+                ]),
+              ),
+            ),
             const SizedBox(height: 14),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopAuthPage())); _load(); }, icon: const Icon(Icons.login), label: const Text('دخول / إنشاء حساب محل')),
+            const SizedBox(height: 12),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopConfirmOrderPage())), icon: const Icon(Icons.qr_code_scanner), label: const Text('فحص كود الطلب')),
             const SizedBox(height: 12),
-            const Card(child: ListTile(leading: Icon(Icons.info_outline), title: Text('نسخة تجريبية محلية'), subtitle: Text('حالياً الطلب والتأكيد محفوظين على نفس الجهاز. بالمرحلة التالية نربطهم بالإنترنت حتى يظهر الطلب مباشرة عند المحل الحقيقي.'))),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopDashboardPage())), icon: const Icon(Icons.account_balance_wallet), label: const Text('حساب المحل والعمولات')),
+            const SizedBox(height: 12),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OfferSubmitPage())), icon: const Icon(Icons.local_offer), label: const Text('إضافة عرض')),
+            const SizedBox(height: 12),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopSizeRequestsPage())), icon: const Icon(Icons.straighten), label: const Text('طلبات القياسات')),
+            const SizedBox(height: 12),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationCenterPage())), icon: const Icon(Icons.notifications), label: const Text('إشعارات المحل')),
           ],
         ),
       ),
