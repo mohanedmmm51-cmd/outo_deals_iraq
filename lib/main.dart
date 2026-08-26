@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import 'admin_features.dart';
 import 'commerce_pages.dart' as commerce;
 import 'expert_features_backup.dart' as expert;
 import 'legacy_main.dart' as legacy;
@@ -146,7 +147,7 @@ class Home extends StatelessWidget {
                     const SizedBox(height: 14),
                     actionButton(context, Icons.support_agent, 'التواصل مع الدعم', 'مساعدة واستفسارات', Colors.white, () => _open(context, const legacy.SupportPage())),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.admin_panel_settings, 'لوحة الإدارة', 'المحلات والطلبات والتسويات', Colors.white, () => _open(context, const AdminLoginPage())),
+                    actionButton(context, Icons.admin_panel_settings, 'لوحة الإدارة', 'المحلات والعروض والطلبات والتسويات', Colors.white, () => _open(context, const AdminAccessPage())),
                   ],
                 ),
               ),
