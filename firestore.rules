@@ -91,6 +91,11 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /complaints/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
     match /notifications/{id} {
       allow get: if true;
       allow list: if true;
