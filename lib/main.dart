@@ -6,6 +6,7 @@ import 'commerce_pages.dart' as commerce;
 import 'expert_features_backup.dart' as expert;
 import 'legacy_main.dart' as legacy;
 import 'marketplace_features.dart';
+import 'operations_features.dart';
 import 'order_system.dart';
 import 'shop_dashboard.dart';
 import 'shop_store.dart';
@@ -131,9 +132,9 @@ class Home extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.receipt_long, 'طلباتي', 'تابع كود الطلب وحالة التنفيذ والتقييم', Colors.white, () => _open(context, const MyOrdersPage())),
+                    actionButton(context, Icons.receipt_long, 'طلباتي', 'الحالة + الإلغاء + الملاحظات + المشاركة + التقييم', Colors.white, () => _open(context, const MyOrdersPage())),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.storefront, 'بوابة صاحب المحل', 'تسجيل دخول + الطلبات + العمولات والتسويات', Colors.white, () => _open(context, const ShopPortalPage())),
+                    actionButton(context, Icons.storefront, 'بوابة صاحب المحل', 'الطلبات + المخزون + الفروع + العمولات', Colors.white, () => _open(context, const ShopPortalPage())),
                     const SizedBox(height: 14),
                     actionButton(context, Icons.straighten, 'طلب قياس', 'ما لكيت القياس؟ أرسل الطلب للمحلات أونلاين', yellow, () => _open(context, const OnlineSizeRequestPage())),
                     const SizedBox(height: 14),
@@ -147,7 +148,7 @@ class Home extends StatelessWidget {
                     const SizedBox(height: 14),
                     actionButton(context, Icons.support_agent, 'التواصل مع الدعم', 'مساعدة واستفسارات', Colors.white, () => _open(context, const legacy.SupportPage())),
                     const SizedBox(height: 14),
-                    actionButton(context, Icons.admin_panel_settings, 'لوحة الإدارة', 'المحلات والعروض والطلبات والتسويات', Colors.white, () => _open(context, const AdminAccessPage())),
+                    actionButton(context, Icons.admin_panel_settings, 'لوحة الإدارة', 'تقارير + بحث + أسعار + إحصائيات + سجل نشاط', Colors.white, () => _open(context, const AdminAccessPage())),
                   ],
                 ),
               ),
@@ -264,9 +265,15 @@ class _ShopPortalPageState extends State<ShopPortalPage> {
             const SizedBox(height: 14),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopAuthPage())); _load(); }, icon: const Icon(Icons.login), label: const Text('دخول / إنشاء حساب محل')),
             const SizedBox(height: 12),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopOrdersPage())), icon: const Icon(Icons.inbox), label: const Text('الطلبات الواردة وحالاتها')),
+            const SizedBox(height: 12),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopConfirmOrderPage())), icon: const Icon(Icons.qr_code_scanner), label: const Text('فحص كود الطلب')),
             const SizedBox(height: 12),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopDashboardPage())), icon: const Icon(Icons.account_balance_wallet), label: const Text('حساب المحل والعمولات')),
+            const SizedBox(height: 12),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryManagementPage())), icon: const Icon(Icons.inventory_2), label: const Text('إدارة المخزون')),
+            const SizedBox(height: 12),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BranchManagementPage())), icon: const Icon(Icons.account_tree), label: const Text('فروع المحل')),
             const SizedBox(height: 12),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OfferSubmitPage())), icon: const Icon(Icons.local_offer), label: const Text('إضافة عرض')),
             const SizedBox(height: 12),
