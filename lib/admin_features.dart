@@ -123,8 +123,8 @@ class _SummaryTab extends StatelessWidget {
             final orders = ordersSnap.data?.docs ?? [];
             final shops = shopsSnap.data?.docs ?? [];
             final completed = orders.where((d) => d.data()['completed'] == true || d.data()['status'] == 'completed').length;
-            final sales = orders.where((d) => d.data()['completed'] == true || d.data()['status'] == 'completed').fold<int>(0, (sum, d) => sum + ((d.data()['price'] as num?)?.toInt() ?? 0));
-            final commissions = orders.where((d) => d.data()['completed'] == true || d.data()['status'] == 'completed').fold<int>(0, (sum, d) => sum + ((d.data()['commission'] as num?)?.toInt() ?? 0));
+            final sales = orders.where((d) => d.data()['completed'] == true || d.data()['status'] == 'completed').fold<int>(0, (value, d) => value + ((d.data()['price'] as num?)?.toInt() ?? 0));
+            final commissions = orders.where((d) => d.data()['completed'] == true || d.data()['status'] == 'completed').fold<int>(0, (value, d) => value + ((d.data()['commission'] as num?)?.toInt() ?? 0));
             return ListView(padding: const EdgeInsets.all(16), children: [
               Row(children: [Expanded(child: _stat('الطلبات', '${orders.length}', Icons.receipt_long)), const SizedBox(width: 8), Expanded(child: _stat('المنفذة', '$completed', Icons.check_circle))]),
               const SizedBox(height: 8),
@@ -135,6 +135,7 @@ class _SummaryTab extends StatelessWidget {
               _nav(context, 'البحث + الفلاتر + CSV/PDF', Icons.manage_search, const OrdersManagementPage()),
               _nav(context, 'الإحصائيات الشهرية والأكثر طلباً', Icons.analytics, const AnalyticsPage()),
               _nav(context, 'إدارة الأسعار من السيرفر', Icons.price_change, const PricingManagementPage()),
+              _nav(context, 'مخاطر المحلات والشكاوى', Icons.warning_amber, const ShopRiskPage()),
               _nav(context, 'سجل النشاط الإداري', Icons.history, const AuditLogPage()),
             ]);
           },
