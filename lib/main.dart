@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_features.dart';
+import 'advanced_features.dart';
 import 'commerce_pages.dart' as commerce;
 import 'expert_features_backup.dart' as expert;
 import 'legacy_main.dart' as legacy;
@@ -131,6 +132,8 @@ class Home extends StatelessWidget {
                         Expanded(child: categoryButton(context, 'البطاريات', const BatteryCategoryIcon(), () => _open(context, const commerce.BatteriesPage()))),
                       ],
                     ),
+                    const SizedBox(height: 14),
+                    actionButton(context, Icons.auto_awesome, 'الخدمات المتقدمة', 'مفضلة + حجز + كوبونات + إحالة + فاتورة + صور + مقارنة + تنبيهات', yellow, () => _open(context, const AdvancedHubPage())),
                     const SizedBox(height: 14),
                     actionButton(context, Icons.receipt_long, 'طلباتي', 'الحالة + الإلغاء + الملاحظات + المشاركة + التقييم', Colors.white, () => _open(context, const MyOrdersPage())),
                     const SizedBox(height: 14),
@@ -274,6 +277,8 @@ class _ShopPortalPageState extends State<ShopPortalPage> {
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryManagementPage())), icon: const Icon(Icons.inventory_2), label: const Text('إدارة المخزون')),
             const SizedBox(height: 12),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BranchManagementPage())), icon: const Icon(Icons.account_tree), label: const Text('فروع المحل')),
+            const SizedBox(height: 12),
+            FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopAdvancedToolsPage())), icon: const Icon(Icons.auto_fix_high), label: const Text('أدوات المحل المتقدمة')),
             const SizedBox(height: 12),
             FilledButton.icon(style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OfferSubmitPage())), icon: const Icon(Icons.local_offer), label: const Text('إضافة عرض')),
             const SizedBox(height: 12),
