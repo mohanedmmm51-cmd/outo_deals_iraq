@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'legacy_main.dart' as legacy;
@@ -9,13 +8,8 @@ import 'legacy_main.dart' as legacy;
 const _yellow = Color(0xFFFFD400);
 
 class _VehDbApi {
-  String get base {
-    final projectId = Firebase.app().options.projectId.trim();
-    if (projectId.isEmpty) {
-      throw Exception('Firebase project ID غير موجود');
-    }
-    return 'https://europe-west1-$projectId.cloudfunctions.net/vehdb';
-  }
+  static const String base =
+      'https://auto-deals-vehdb.mohanedmmm51.workers.dev';
 
   Future<dynamic> get(String path) async {
     final client = HttpClient();
@@ -223,7 +217,7 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
       return 'خدمة السيارات غير مفعلة على السيرفر.';
     }
     if (text.contains('404')) {
-      return 'خدمة السيارات غير منشورة بعد على Firebase.';
+      return 'خدمة السيارات غير متاحة حاليًا.';
     }
     return text;
   }
