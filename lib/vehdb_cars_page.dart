@@ -1,44 +1,26 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'legacy_main.dart' as legacy;
 
 const _yellow = Color(0xFFFFD400);
-const _vehDbBuildToken = String.fromEnvironment('VEHDB_TOKEN', defaultValue: '');
-
-class VehDbTokenStore {
-  static const _key = 'vehdb_api_token';
-
-  static Future<String> resolve() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = (prefs.getString(_key) ?? '').trim();
-    if (saved.isNotEmpty) return saved;
-
-    final buildToken = _vehDbBuildToken.trim();
-    if (buildToken.isNotEmpty) {
-      await prefs.setString(_key, buildToken);
-      return buildToken;
-    }
-
-    throw Exception(
-      'VehDB يحتاج تشغيل واحد فقط مع VEHDB_TOKEN حتى ينحفظ داخل الجهاز. بعدها ما راح يطلبه مرة ثانية.',
-    );
-  }
-}
 
 class _VehDbApi {
-  static const base = 'https://api.vehdb.com/v1';
+  String get base {
+    final projectId = Firebase.app().options.projectId.trim();
+    if (projectId.isEmpty) {
+      throw Exception('Firebase project ID غير موجود');
+    }
+    return 'https://europe-west1-$projectId.cloudfunctions.net/vehdb';
+  }
 
   Future<dynamic> get(String path) async {
-    final token = await VehDbTokenStore.resolve();
     final client = HttpClient();
-
     try {
       final request = await client.getUrl(Uri.parse('$base$path'));
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
 
       final response = await request.close();
@@ -46,10 +28,11 @@ class _VehDbApi {
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception(
-          'VehDB HTTP ${response.statusCode}${body.isNotEmpty ? ': $body' : ''}',
+          'خدمة السيارات HTTP ${response.statusCode}${body.isNotEmpty ? ': $body' : ''}',
         );
       }
 
+      if (body.trim().isEmpty) return {};
       return jsonDecode(body);
     } finally {
       client.close(force: true);
@@ -74,14 +57,13 @@ class _VehDbApi {
       }
     }
 
-    final list = out.toList()..sort();
-    return list;
+    return out.toList()..sort();
   }
 
-  Future<List<String>> makes() => get('/tire-sizes/makes').then(_strings);
+  Future<List<String>> makes() => get('/makes').then(_strings);
 
   Future<List<String>> models(String make) => get(
-        '/tire-sizes/models?make=${Uri.encodeQueryComponent(make)}',
+        '/models?make=${Uri.encodeQueryComponent(make)}',
       ).then(_strings);
 
   Future<List<legacy.Car>> cars(String make, String model, int year) async {
@@ -119,6 +101,11 @@ class _VehDbApi {
     return raw.toString().trim();
   }
 
+  bool _looksLikeSize(String text) {
+    final clean = text.toUpperCase().replaceAll(' ', '');
+    return RegExp(r'\d{3}/\d{2}R?\d{2}').hasMatch(clean);
+  }
+
   void _addSize(Set<String> out, dynamic value) {
     if (value == null) return;
     if (value is List) {
@@ -135,16 +122,19 @@ class _VehDbApi {
     }
 
     final text = value.toString().trim();
-    if (text.contains(',') || text.contains(';')) {
-      for (final part in text.split(RegExp(r'[,;]'))) {
-        final cleaned = _cleanSize(part);
+    if (text.isEmpty) return;
+
+    final matches = RegExp(r'\d{3}\s*/\s*\d{2}\s*[Rr/]?\s*\d{2}').allMatches(text);
+    if (matches.isNotEmpty) {
+      for (final match in matches) {
+        final cleaned = _cleanSize(match.group(0));
         if (cleaned.isNotEmpty) out.add(cleaned);
       }
       return;
     }
 
     final cleaned = _cleanSize(text);
-    if (cleaned.isNotEmpty) out.add(cleaned);
+    if (_looksLikeSize(cleaned)) out.add(cleaned);
   }
 
   void _collectSizes(dynamic node, Set<String> out) {
@@ -153,12 +143,23 @@ class _VehDbApi {
         'tire_size_oem',
         'alternate_tire_sizes',
         'tire_size',
+        'tire_sizes',
         'front_tire_size',
         'rear_tire_size',
+        'front_tires',
+        'rear_tires',
+        'tires',
+        'size',
+        'sizes',
       ]) {
         if (node.containsKey(key)) _addSize(out, node[key]);
       }
-      for (final value in node.values) {
+      for (final entry in node.entries) {
+        final key = entry.key.toString().toLowerCase();
+        final value = entry.value;
+        if (key.contains('tire') || key.contains('tyre')) {
+          _addSize(out, value);
+        }
         if (value is Map || value is List) _collectSizes(value, out);
       }
     } else if (node is List) {
@@ -173,24 +174,21 @@ class _VehDbApi {
 
     if (car.id.trim().isNotEmpty) {
       try {
-        final byCar = await get('/cars/${Uri.encodeComponent(car.id)}/tire-sizes');
+        final byCar = await get('/car-sizes/${Uri.encodeComponent(car.id)}');
         _collectSizes(byCar, out);
       } catch (_) {}
     }
 
     if (out.isEmpty) {
       final direct = await get(
-        '/tire-sizes'
-        '?make=${Uri.encodeQueryComponent(car.make)}'
+        '/sizes?make=${Uri.encodeQueryComponent(car.make)}'
         '&model=${Uri.encodeQueryComponent(car.model)}'
-        '&year=${car.year}'
-        '&per_page=100',
+        '&year=${car.year}',
       );
       _collectSizes(direct, out);
     }
 
-    final result = out.toList()..sort();
-    return result;
+    return out.toList()..sort();
   }
 }
 
@@ -219,6 +217,17 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
     _loadMakes();
   }
 
+  String _friendlyError(Object e) {
+    final text = e.toString().replaceFirst('Exception: ', '');
+    if (text.contains('401')) {
+      return 'خدمة السيارات غير مفعلة على السيرفر.';
+    }
+    if (text.contains('404')) {
+      return 'خدمة السيارات غير منشورة بعد على Firebase.';
+    }
+    return text;
+  }
+
   Future<void> _loadMakes() async {
     setState(() {
       busy = true;
@@ -230,7 +239,7 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
       setState(() => makes = result);
     } catch (e) {
       if (!mounted) return;
-      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => error = _friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -252,7 +261,7 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
       setState(() => models = result);
     } catch (e) {
       if (!mounted) return;
-      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => error = _friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -269,9 +278,14 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
       final result = await _api.cars(make!, model!, year!);
       if (!mounted) return;
       setState(() => cars = result);
+      if (result.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ما لكينا سيارة مطابقة لهذا الاختيار.')),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => error = _friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -285,7 +299,11 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
     try {
       final result = await _api.sizes(car);
       if (!mounted) return;
-      Navigator.push(
+      if (result.isEmpty) {
+        setState(() => error = 'ما حصلنا قياس إطار لهذه السيارة.');
+        return;
+      }
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => legacy.SizesPage(car: car, sizes: result),
@@ -293,7 +311,7 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => error = _friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -308,7 +326,7 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final years = List.generate(40, (index) => DateTime.now().year - index);
+    final years = List.generate(50, (index) => DateTime.now().year - index);
 
     return Scaffold(
       appBar: AppBar(title: const Text('اختار سيارتك')),
@@ -387,7 +405,10 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
                   padding: const EdgeInsets.all(16),
                 ),
                 onPressed: busy ? null : _searchCars,
-                child: const Text('بحث عن السيارة والفئة', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'بحث عن السيارة والفئة',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             if (busy)
               const Padding(
