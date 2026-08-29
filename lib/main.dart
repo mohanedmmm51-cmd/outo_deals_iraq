@@ -12,14 +12,32 @@ import 'order_system.dart';
 import 'production_features.dart';
 import 'shop_dashboard.dart';
 import 'shop_store.dart';
+import 'size_request_page.dart';
 import 'vehdb_cars_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  await NotificationService.init();
-  await ProductionServices.init();
+
   runApp(const App());
+
+  try {
+    await Firebase.initializeApp().timeout(const Duration(seconds: 8));
+  } catch (e) {
+    debugPrint('Firebase init skipped: $e');
+    return;
+  }
+
+  try {
+    await NotificationService.init().timeout(const Duration(seconds: 8));
+  } catch (e) {
+    debugPrint('Notifications init skipped: $e');
+  }
+
+  try {
+    await ProductionServices.init().timeout(const Duration(seconds: 8));
+  } catch (e) {
+    debugPrint('Production services init skipped: $e');
+  }
 }
 
 const yellow = Color(0xFFFFD400);
@@ -235,7 +253,7 @@ class Home extends StatelessWidget {
                       'طلب قياس',
                       'ما لكيت القياس؟ أرسل الطلب للمحلات أونلاين',
                       yellow,
-                      () => _open(context, const OnlineSizeRequestPage()),
+                      () => _open(context, const EnhancedSizeRequestPage()),
                     ),
                     const SizedBox(height: 14),
                     actionButton(
