@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'marketplace_features.dart';
 import 'order_system.dart';
 import 'shop_store.dart';
+import 'size_request_page.dart';
 
 class ShopScannerShortcut extends StatefulWidget {
   final Widget child;
@@ -182,6 +183,14 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
         appBar: AppBar(
           title: Text('مسح طلب - ${widget.shop.name}'),
           actions: [
+            IconButton(
+              tooltip: 'طلبات القياسات',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ShopSizeRequestsEnhancedPage()),
+              ),
+              icon: const Icon(Icons.straighten),
+            ),
             IconButton(
               tooltip: 'الفلاش',
               onPressed: () => scanner.toggleTorch(),
