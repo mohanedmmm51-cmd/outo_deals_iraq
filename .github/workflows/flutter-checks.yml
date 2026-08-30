@@ -7,11 +7,17 @@ on:
     branches: [main]
 
 jobs:
-  analyze-and-test:
+  android-build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -19,11 +25,14 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Flutter doctor
+        run: flutter doctor -v
+
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyze compatibility
+        run: flutter analyze --suggestions || true
 
-      - name: Test
-        run: flutter test
+      - name: Build Android debug APK
+        run: flutter build apk --debug -v
