@@ -11,6 +11,7 @@ import 'operations_features.dart';
 import 'order_system.dart';
 import 'production_features.dart';
 import 'shop_dashboard.dart';
+import 'shop_qr_confirm_page.dart';
 import 'shop_store.dart';
 import 'size_request_page.dart';
 import 'vehdb_cars_page.dart';
@@ -54,6 +55,9 @@ class App extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: yellow),
+      ),
+      builder: (context, child) => ShopScannerShortcut(
+        child: child ?? const SizedBox.shrink(),
       ),
       home: const legacy.Home(),
     );
