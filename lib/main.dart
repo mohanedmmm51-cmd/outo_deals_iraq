@@ -43,6 +43,7 @@ Future<void> main() async {
 }
 
 const yellow = Color(0xFFFFD400);
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -50,6 +51,7 @@ class App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'إطارات وبطاريات العراق',
       theme: ThemeData(
@@ -57,6 +59,7 @@ class App extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: yellow),
       ),
       builder: (context, child) => ShopScannerShortcut(
+        navigatorKey: appNavigatorKey,
         child: child ?? const SizedBox.shrink(),
       ),
       home: const legacy.Home(),
