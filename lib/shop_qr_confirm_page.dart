@@ -8,7 +8,13 @@ import 'size_request_page.dart';
 
 class ShopScannerShortcut extends StatefulWidget {
   final Widget child;
-  const ShopScannerShortcut({super.key, required this.child});
+  final GlobalKey<NavigatorState> navigatorKey;
+
+  const ShopScannerShortcut({
+    super.key,
+    required this.child,
+    required this.navigatorKey,
+  });
 
   @override
   State<ShopScannerShortcut> createState() => _ShopScannerShortcutState();
@@ -28,6 +34,12 @@ class _ShopScannerShortcutState extends State<ShopScannerShortcut> {
     if (mounted) setState(() => shop = value);
   }
 
+  void _push(Widget page) {
+    widget.navigatorKey.currentState?.push(
+      MaterialPageRoute(builder: (_) => page),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -39,10 +51,7 @@ class _ShopScannerShortcutState extends State<ShopScannerShortcut> {
           child: SafeArea(
             child: FloatingActionButton(
               heroTag: 'nearby-shops-shortcut',
-              tooltip: 'المحلات القريبة',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const OnlineNearbyShopsPage()),
-              ),
+              onPressed: () => _push(const OnlineNearbyShopsPage()),
               child: const Icon(Icons.near_me),
             ),
           ),
@@ -54,9 +63,7 @@ class _ShopScannerShortcutState extends State<ShopScannerShortcut> {
             child: SafeArea(
               child: FloatingActionButton.extended(
                 heroTag: 'shop-order-scanner',
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => ShopQrConfirmPage(shop: shop!)),
-                ),
+                onPressed: () => _push(ShopQrConfirmPage(shop: shop!)),
                 icon: const Icon(Icons.qr_code_scanner),
                 label: const Text('مسح طلب'),
               ),
