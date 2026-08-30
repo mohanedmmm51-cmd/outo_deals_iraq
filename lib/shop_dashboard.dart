@@ -275,8 +275,6 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                               profile: p,
                               weekStart: start,
                               orders: unassigned,
-                              totalCommission: dueCommission,
-                              totalSales: weeklySales,
                             ),
                     icon: const Icon(Icons.summarize),
                     label: Text(
@@ -360,8 +358,6 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
     required ShopProfile profile,
     required DateTime weekStart,
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> orders,
-    required int totalCommission,
-    required int totalSales,
   }) async {
     final key = _weekKey(weekStart);
     final settlementId = '${profile.id}_$key';
@@ -370,13 +366,40 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
 
     try {
       final existing = await statementRef.get();
-      if (existing.exists) {
+      final existingData = existing.data();
+      final existingStatus = '${existingData?['status'] ?? ''}';
+      if (existing.exists && existingStatus == 'paid') {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('كشف هذا الأسبوع موجود مسبقاً')),
+          const SnackBar(content: Text('تم تسديد كشف هذا الأسبوع ولا يمكن إضافة طلبات جديدة له')),
         );
         return;
       }
+
+      final oldCodes = (existingData?['orderCodes'] as List?)
+              ?.map((e) => '$e')
+              .toSet() ??
+          <String>{};
+      final newOrders = orders.where((order) => !oldCodes.contains(order.id)).toList();
+      if (newOrders.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('كل طلبات هذا الأسبوع مضافة للكشف بالفعل')),
+        );
+        return;
+      }
+
+      final newSales = newOrders.fold<int>(
+        0,
+        (sum, d) => sum + ((d.data()['price'] as num?)?.toInt() ?? 0),
+      );
+      final newCommission = newOrders.fold<int>(
+        0,
+        (sum, d) => sum + ((d.data()['commission'] as num?)?.toInt() ?? 0),
+      );
+      final mergedCodes = <String>{...oldCodes, ...newOrders.map((d) => d.id)}.toList();
+      final previousSales = (existingData?['totalSales'] as num?)?.toInt() ?? 0;
+      final previousCommission = (existingData?['totalCommission'] as num?)?.toInt() ?? 0;
 
       final batch = db.batch();
       batch.set(statementRef, {
@@ -385,16 +408,17 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
         'shopName': profile.name,
         'weekStart': Timestamp.fromDate(weekStart),
         'weekEnd': Timestamp.fromDate(weekStart.add(const Duration(days: 7))),
-        'totalSales': totalSales,
-        'totalCommission': totalCommission,
-        'orderCount': orders.length,
-        'orderCodes': orders.map((d) => d.id).toList(),
+        'totalSales': previousSales + newSales,
+        'totalCommission': previousCommission + newCommission,
+        'orderCount': mergedCodes.length,
+        'orderCodes': mergedCodes,
         'status': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
+        if (!existing.exists) 'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
         'paidAt': null,
-      });
+      }, SetOptions(merge: true));
 
-      for (final order in orders) {
+      for (final order in newOrders) {
         batch.update(order.reference, {
           'settlementId': settlementId,
           'settlementStatus': 'pending',
@@ -406,7 +430,9 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'تم إنشاء كشف الأسبوع: ${_money(totalCommission)} د.ع عمولة مستحقة',
+            existing.exists
+                ? 'تم تحديث كشف الأسبوع وإضافة ${newOrders.length} طلب • ${_money(newCommission)} د.ع عمولة جديدة'
+                : 'تم إنشاء كشف الأسبوع: ${_money(newCommission)} د.ع عمولة مستحقة',
           ),
         ),
       );
