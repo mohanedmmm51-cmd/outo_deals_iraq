@@ -266,11 +266,14 @@ class OrderStore {
         throw StateError('هذا الطلب مخصص لمحل آخر');
       }
       if (current.status == 'cancelled') throw StateError('هذا الطلب ملغي');
+      if (current.status == 'expired') throw StateError('انتهت صلاحية كود الطلب');
       if (current.expiresAt != null && DateTime.now().isAfter(current.expiresAt!) && !current.completed) {
         tx.update(docRef, {'status': 'expired'});
         throw StateError('انتهت صلاحية كود الطلب');
       }
-      if (current.completed) return current;
+      if (current.completed) {
+        throw StateError('هذا الطلب منفذ مسبقاً ولا يمكن تسجيله مرة ثانية');
+      }
       final completedAt = DateTime.now();
       tx.update(docRef, {
         'completed': true,
