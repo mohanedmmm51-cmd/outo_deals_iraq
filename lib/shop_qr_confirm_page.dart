@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import 'marketplace_features.dart';
 import 'order_system.dart';
 import 'shop_store.dart';
 
@@ -28,24 +29,38 @@ class _ShopScannerShortcutState extends State<ShopScannerShortcut> {
 
   @override
   Widget build(BuildContext context) {
-    if (shop == null) return widget.child;
     return Stack(
       children: [
         widget.child,
         Positioned(
-          left: 16,
+          right: 16,
           bottom: 22,
           child: SafeArea(
-            child: FloatingActionButton.extended(
-              heroTag: 'shop-order-scanner',
+            child: FloatingActionButton(
+              heroTag: 'nearby-shops-shortcut',
+              tooltip: 'المحلات القريبة',
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => ShopQrConfirmPage(shop: shop!)),
+                MaterialPageRoute(builder: (_) => const OnlineNearbyShopsPage()),
               ),
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('مسح طلب'),
+              child: const Icon(Icons.near_me),
             ),
           ),
         ),
+        if (shop != null)
+          Positioned(
+            left: 16,
+            bottom: 22,
+            child: SafeArea(
+              child: FloatingActionButton.extended(
+                heroTag: 'shop-order-scanner',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => ShopQrConfirmPage(shop: shop!)),
+                ),
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('مسح طلب'),
+              ),
+            ),
+          ),
       ],
     );
   }
