@@ -55,7 +55,7 @@ class App extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: yellow),
       ),
-      home: const Home(),
+      home: Home(),
     );
   }
 }
