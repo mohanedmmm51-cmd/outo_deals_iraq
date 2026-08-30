@@ -62,7 +62,7 @@ class App extends StatelessWidget {
         navigatorKey: appNavigatorKey,
         child: child ?? const SizedBox.shrink(),
       ),
-      home: const legacy.Home(),
+      home: const expert.Home(),
     );
   }
 }
