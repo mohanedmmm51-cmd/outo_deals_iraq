@@ -34,5 +34,31 @@ jobs:
       - name: Analyze compatibility
         run: flutter analyze --suggestions || true
 
-      - name: Build Android debug APK
-        run: flutter build apk --debug -v
+      - name: Build Android debug APK and capture log
+        shell: bash
+        run: |
+          set +e
+          flutter build apk --debug -v > build.log 2>&1
+          status=$?
+          tail -n 400 build.log > build-tail.log
+          echo "BUILD_EXIT_CODE=$status" > build-status.txt
+          exit 0
+
+      - name: Upload build diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-diagnostics
+          path: |
+            build.log
+            build-tail.log
+            build-status.txt
+          if-no-files-found: error
+
+      - name: Fail if Android build failed
+        shell: bash
+        run: |
+          code=$(cut -d= -f2 build-status.txt)
+          if [ "$code" != "0" ]; then
+            echo "Android build failed with exit code $code"
+            exit "$code"
+          fi
