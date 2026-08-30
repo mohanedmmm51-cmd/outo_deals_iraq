@@ -4,7 +4,14 @@ import 'package:barcode_widget/barcode_widget.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'shop_store.dart';
+
 const _sizeRequestYellow = Color(0xFFFFD400);
+
+String _sizeMoney(int value) => value.toString().replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+      (m) => '${m[1]},',
+    );
 
 class EnhancedSizeRequestPage extends StatefulWidget {
   const EnhancedSizeRequestPage({super.key});
@@ -108,7 +115,7 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
         ),
         const SizedBox(height: 6),
         const Text(
-          'أرسل القياس المطلوب للمحلات وبعدها احتفظ بكود الطلب.',
+          'أرسل القياس المطلوب للمحلات، وكل محل يقدر يرسل سعره بدون ما يقفل الطلب على البقية.',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 22),
@@ -204,10 +211,7 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                const Text(
-                  'QR',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                const Text('QR', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
                 BarcodeWidget(
                   barcode: Barcode.qrCode(),
@@ -220,29 +224,51 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
           ),
         ),
         const SizedBox(height: 14),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              children: [
-                const Text(
-                  'الباركود',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        const Text('ردود المحلات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('size_requests').doc(code).snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            final responses = (snap.data!.data()?['responses'] as List?)
+                    ?.whereType<Map>()
+                    .map((e) => Map<String, dynamic>.from(e))
+                    .toList() ??
+                <Map<String, dynamic>>[];
+            responses.sort((a, b) => ((a['price'] as num?)?.toInt() ?? 0)
+                .compareTo((b['price'] as num?)?.toInt() ?? 0));
+            if (responses.isEmpty) {
+              return const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Text('بعد ماكو ردود. من يرد محل راح يظهر عرضه هنا مباشرة.'),
                 ),
-                const SizedBox(height: 12),
-                BarcodeWidget(
-                  barcode: Barcode.code128(),
-                  data: code,
-                  height: 85,
-                  drawText: true,
-                ),
-              ],
-            ),
-          ),
+              );
+            }
+            return Column(
+              children: responses.map((r) {
+                final price = (r['price'] as num?)?.toInt() ?? 0;
+                return Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: _sizeRequestYellow,
+                      child: Icon(Icons.storefront, color: Colors.black),
+                    ),
+                    title: Text('${r['shopName'] ?? 'محل'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('${r['note'] ?? 'متوفر'}'),
+                    trailing: Text(
+                      '${_sizeMoney(price)} د.ع',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
         ),
         const SizedBox(height: 14),
         const Text(
-          'احتفظ بالكود. يستخدم لتحديد طلبك عند توفر القياس.',
+          'احتفظ بالكود لحين اختيار العرض المناسب.',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 18),
@@ -254,4 +280,124 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
       ],
     );
   }
+}
+
+class ShopSizeRequestsEnhancedPage extends StatelessWidget {
+  const ShopSizeRequestsEnhancedPage({super.key});
+
+  Future<void> _quote(BuildContext context, DocumentReference<Map<String, dynamic>> ref) async {
+    final shop = await ShopStore.load();
+    if (shop == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل حساب المحل أولاً')));
+      }
+      return;
+    }
+
+    final priceController = TextEditingController();
+    final noteController = TextEditingController(text: 'متوفر');
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إرسال عرض للزبون'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: priceController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'السعر النهائي د.ع', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteController,
+              decoration: const InputDecoration(labelText: 'ملاحظة', border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, {
+              'price': priceController.text.trim(),
+              'note': noteController.text.trim(),
+            }),
+            child: const Text('إرسال'),
+          ),
+        ],
+      ),
+    );
+    priceController.dispose();
+    noteController.dispose();
+    if (result == null) return;
+    final price = int.tryParse(result['price'] ?? '');
+    if (price == null || price <= 0) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اكتب سعر صحيح')));
+      }
+      return;
+    }
+
+    final snap = await ref.get();
+    final data = snap.data();
+    if (data == null || data['status'] != 'open') return;
+    final oldResponses = (data['responses'] as List?)
+            ?.whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .where((e) => '${e['shopId'] ?? ''}' != shop.id)
+            .toList() ??
+        <Map<String, dynamic>>[];
+    oldResponses.add({
+      'shopId': shop.id,
+      'shopName': shop.name,
+      'price': price,
+      'note': (result['note'] ?? '').isEmpty ? 'متوفر' : result['note'],
+      'quotedAt': DateTime.now().toIso8601String(),
+    });
+    await ref.update({'responses': oldResponses, 'lastResponseAt': FieldValue.serverTimestamp()});
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال العرض للزبون')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('طلبات القياسات')), 
+        body: Directionality(
+          textDirection: TextDirection.rtl,
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance.collection('size_requests').where('status', isEqualTo: 'open').snapshots(),
+            builder: (context, snap) {
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+              final docs = snap.data!.docs.toList();
+              if (docs.isEmpty) return const Center(child: Text('ماكو طلبات قياسات مفتوحة حالياً'));
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final d = docs[index];
+                  final data = d.data();
+                  final responses = (data['responses'] as List?)?.length ?? 0;
+                  return Card(
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: _sizeRequestYellow,
+                        child: Icon(Icons.straighten, color: Colors.black),
+                      ),
+                      title: Text('${data['type'] ?? 'إطار'} ${data['size'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text('${data['requestCode'] ?? d.id}\nردود المحلات: $responses'),
+                      isThreeLine: true,
+                      trailing: FilledButton(
+                        onPressed: () => _quote(context, d.reference),
+                        child: const Text('أرسل سعر'),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      );
 }
