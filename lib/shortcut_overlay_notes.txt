@@ -1,0 +1,1 @@
+Draggable shortcut overlay v2 replaces the previous implementation. Kept intentionally minimal for CI visibility.
