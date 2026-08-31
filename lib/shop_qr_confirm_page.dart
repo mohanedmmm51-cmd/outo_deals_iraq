@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import 'inventory_system.dart';
 import 'marketplace_features.dart';
 import 'order_system.dart';
 import 'shop_store.dart';
@@ -162,10 +163,14 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
         order = confirmed;
         message = confirmed == null
             ? 'تعذر تأكيد الطلب'
-            : 'تم تنفيذ الطلب وتسجيل العمولة بنجاح';
+            : 'تم تنفيذ الطلب وتنزيل المخزون وتسجيل العمولة بنجاح';
       });
     } catch (e) {
-      if (mounted) setState(() => message = e.toString());
+      if (mounted) {
+        setState(
+          () => message = e.toString().replaceFirst('Bad state: ', ''),
+        );
+      }
     } finally {
       if (mounted) setState(() => handling = false);
     }
@@ -190,6 +195,14 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
         appBar: AppBar(
           title: Text('مسح طلب - ${widget.shop.name}'),
           actions: [
+            IconButton(
+              tooltip: 'المخزون',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ShopInventoryPage()),
+              ),
+              icon: const Icon(Icons.inventory_2_outlined),
+            ),
             IconButton(
               tooltip: 'طلبات القياسات',
               onPressed: () => Navigator.push(
@@ -276,7 +289,7 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
                 Text(o.detail),
                 const SizedBox(height: 6),
                 Text('الكود: ${o.code}'),
-                Text('السعر: ${o.price} د.ع'),
+                Text('السعر المثبت: ${o.price} د.ع'),
                 Text('العمولة: ${o.commission} د.ع'),
               ],
             ),
@@ -294,7 +307,9 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
           FilledButton.icon(
             onPressed: handling ? null : _confirm,
             icon: const Icon(Icons.check_circle),
-            label: Text(handling ? 'جاري التأكيد...' : 'تأكيد تنفيذ الطلب'),
+            label: Text(
+              handling ? 'جاري التأكيد...' : 'تأكيد التنفيذ وتنزيل المخزون',
+            ),
           ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
