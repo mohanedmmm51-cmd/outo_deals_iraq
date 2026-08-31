@@ -9,7 +9,9 @@
 	<key>CFBundleDisplayName</key>
 	<string>Auto Deals Iraq</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>نحتاج موقعك لتحديد موقع المحل وإرساله ضمن طلب الانضمام.</string>
+	<string>نحتاج موقعك لتحديد المحلات القريبة وحفظ موقع المحل عند طلب الانضمام.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>نحتاج الكاميرا لمسح QR الخاص بطلب الزبون وتأكيده في المحل.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
