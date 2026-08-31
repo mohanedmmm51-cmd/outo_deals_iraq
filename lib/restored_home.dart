@@ -31,12 +31,16 @@ class _RestoredHomeState extends State<RestoredHome> {
         return;
       case 1:
         _open(const OnlineNearbyShopsPage());
+        return;
       case 2:
         _open(const CustomerCartPage());
+        return;
       case 3:
         _open(const MyOrdersPage());
+        return;
       case 4:
         _open(const CustomerAccountPage());
+        return;
     }
   }
 
@@ -86,16 +90,9 @@ class _RestoredHomeState extends State<RestoredHome> {
                             children: [
                               Text(
                                 'إطارات وبطاريات العراق',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                               ),
-                              Text(
-                                'الجودة .. بأقرب محل',
-                                style: TextStyle(color: Colors.white70),
-                              ),
+                              Text('الجودة .. بأقرب محل', style: TextStyle(color: Colors.white70)),
                             ],
                           ),
                           const Spacer(),
@@ -113,18 +110,12 @@ class _RestoredHomeState extends State<RestoredHome> {
                         child: Container(
                           height: 54,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
                           child: const Row(
                             children: [
                               Icon(Icons.search, size: 30),
                               SizedBox(width: 10),
-                              Text(
-                                'شنو تحتاج؟ إطارات أو بطاريات...',
-                                style: TextStyle(color: Colors.grey, fontSize: 16),
-                              ),
+                              Text('شنو تحتاج؟ إطارات أو بطاريات...', style: TextStyle(color: Colors.grey, fontSize: 16)),
                             ],
                           ),
                         ),
@@ -137,7 +128,6 @@ class _RestoredHomeState extends State<RestoredHome> {
                   child: Column(
                     children: [
                       RestoredHomeUi.button(
-                        context,
                         Icons.workspace_premium,
                         'مركز الخبير',
                         'نصيحة خبير + مقارنة + اختيار بطارية + سجل صيانة',
@@ -146,7 +136,6 @@ class _RestoredHomeState extends State<RestoredHome> {
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
-                        context,
                         Icons.directions_car,
                         'اختار سيارتك',
                         'اعرف قياس الإطار المناسب لسيارتك',
@@ -175,7 +164,6 @@ class _RestoredHomeState extends State<RestoredHome> {
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
-                        context,
                         Icons.straighten,
                         'طلب قياس',
                         'ما لكيت القياس؟ أرسل طلب للمحلات',
@@ -184,7 +172,6 @@ class _RestoredHomeState extends State<RestoredHome> {
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
-                        context,
                         Icons.location_on,
                         'المحلات القريبة',
                         'المسافة + الأقرب + الاتجاهات',
@@ -193,7 +180,6 @@ class _RestoredHomeState extends State<RestoredHome> {
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
-                        context,
                         Icons.add_business,
                         'إضافة محل',
                         'طلب انضمام لأصحاب المحلات + تحديد GPS',
@@ -202,7 +188,6 @@ class _RestoredHomeState extends State<RestoredHome> {
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
-                        context,
                         Icons.local_offer,
                         'العروض والخصومات',
                         'شوف أحدث العروض المتوفرة',
@@ -211,7 +196,6 @@ class _RestoredHomeState extends State<RestoredHome> {
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
-                        context,
                         Icons.support_agent,
                         'التواصل مع الدعم',
                         'مساعدة واستفسارات',
@@ -232,7 +216,6 @@ class _RestoredHomeState extends State<RestoredHome> {
 
 class RestoredHomeUi {
   static Widget button(
-    BuildContext context,
     IconData icon,
     String title,
     String subtitle,
@@ -276,19 +259,13 @@ class RestoredHomeUi {
       borderRadius: BorderRadius.circular(20),
       child: Container(
         height: 140,
-        decoration: BoxDecoration(
-          color: const Color(0xff171717),
-          borderRadius: BorderRadius.circular(20),
-        ),
+        decoration: BoxDecoration(color: const Color(0xff171717), borderRadius: BorderRadius.circular(20)),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: restoredYellow, size: 52),
             const SizedBox(height: 10),
-            Text(
-              title,
-              style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold),
-            ),
+            Text(title, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -300,8 +277,9 @@ class _HomeDrawer extends StatelessWidget {
   const _HomeDrawer();
 
   void _open(BuildContext context, Widget page) {
-    Navigator.pop(context);
-    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    navigator.push(MaterialPageRoute(builder: (_) => page));
   }
 
   @override
@@ -388,9 +366,7 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
         : legacy.tires.where((t) => t.size.toLowerCase().contains(q)).toList();
     final batteries = q.isEmpty
         ? legacy.batteries.take(10).toList()
-        : legacy.batteries
-            .where((b) => '${b.brand} ${b.amp}'.toLowerCase().contains(q))
-            .toList();
+        : legacy.batteries.where((b) => '${b.brand} ${b.amp}'.toLowerCase().contains(q)).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('البحث')),
@@ -540,18 +516,12 @@ class RestoredExpertCenterPage extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: const Color(0xff111111),
-                borderRadius: BorderRadius.circular(22),
-              ),
+              decoration: BoxDecoration(color: const Color(0xff111111), borderRadius: BorderRadius.circular(22)),
               child: const Column(
                 children: [
                   Icon(Icons.workspace_premium, color: restoredYellow, size: 58),
                   SizedBox(height: 8),
-                  Text(
-                    'خبرة عملية قبل لا تشتري',
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
+                  Text('خبرة عملية قبل لا تشتري', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                   SizedBox(height: 6),
                   Text(
                     'اختيار صحيح للإطار والبطارية، مقارنة واضحة، ونصائح تمنع الشراء الغلط.',
@@ -563,7 +533,6 @@ class RestoredExpertCenterPage extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             RestoredHomeUi.button(
-              context,
               Icons.tips_and_updates,
               'نصيحة الخبير',
               'DOT، التآكل، الضغط، المدينة والسفر',
@@ -572,7 +541,6 @@ class RestoredExpertCenterPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             RestoredHomeUi.button(
-              context,
               Icons.compare_arrows,
               'مقارنة الإطارات',
               'قارن حتى 3 قياسات وأسعار ونصيحة الاستخدام',
@@ -581,7 +549,6 @@ class RestoredExpertCenterPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             RestoredHomeUi.button(
-              context,
               Icons.battery_saver,
               'مساعد البطارية',
               'اختيار حسب الأمبير وStart/Stop والبطارية القديمة',
@@ -590,7 +557,6 @@ class RestoredExpertCenterPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             RestoredHomeUi.button(
-              context,
               Icons.directions_car,
               'القياس حسب السيارة',
               'شركة → موديل → سنة → فئة → قياس',
@@ -599,7 +565,6 @@ class RestoredExpertCenterPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             RestoredHomeUi.button(
-              context,
               Icons.history,
               'سجل السيارة والضمان',
               'احفظ التركيب والكيلومترات والضمان',
