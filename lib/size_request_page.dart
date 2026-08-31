@@ -36,9 +36,10 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
   }
 
   String _createRequestCode() {
-    final now = DateTime.now().millisecondsSinceEpoch.toString();
-    final random = math.Random.secure().nextInt(9000) + 1000;
-    return 'SIZE-${now.substring(now.length - 6)}-$random';
+    final now = DateTime.now().microsecondsSinceEpoch.toString();
+    final tail = now.substring(now.length - 6);
+    final random = (math.Random.secure().nextInt(9000) + 1000).toString();
+    return '$tail$random';
   }
 
   Future<void> _submit() async {
@@ -93,7 +94,7 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(requestCode == null ? 'طلب قياس' : 'كود طلب القياس'),
+        title: Text(requestCode == null ? 'طلب قياس' : 'تذكرة طلب القياس'),
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -115,7 +116,7 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
         ),
         const SizedBox(height: 6),
         const Text(
-          'أرسل القياس المطلوب للمحلات، وكل محل يقدر يرسل سعره بدون ما يقفل الطلب على البقية.',
+          'أرسل القياس المطلوب للمحلات، وبعد الإرسال يطلع لك كود الطلب وQR والباركود مباشرة.',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 22),
@@ -146,7 +147,7 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
           onPressed: busy ? null : _submit,
           icon: const Icon(Icons.qr_code_2),
           label: Text(
-            busy ? 'جاري إنشاء الطلب...' : 'إرسال وإنشاء الكود',
+            busy ? 'جاري إنشاء الطلب...' : 'إرسال وإنشاء التذكرة',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ),
@@ -185,51 +186,87 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
             padding: const EdgeInsets.all(18),
             child: Column(
               children: [
-                const Text('كود الطلب'),
-                const SizedBox(height: 5),
+                const Text(
+                  'كود الطلب',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
                 SelectableText(
                   code,
                   textDirection: TextDirection.ltr,
                   style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.3,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Text(
                   '$requestType • $requestSize',
+                  textAlign: TextAlign.center,
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             child: Column(
               children: [
-                const Text('QR', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  'QR',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 12),
                 BarcodeWidget(
                   barcode: Barcode.qrCode(),
                   data: code,
                   width: 190,
                   height: 190,
+                  errorBuilder: (context, error) => const Text('تعذر إنشاء QR'),
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 14),
-        const Text('ردود المحلات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+            child: Column(
+              children: [
+                const Text(
+                  'الباركود',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 14),
+                BarcodeWidget(
+                  barcode: Barcode.code128(),
+                  data: code,
+                  width: 300,
+                  height: 92,
+                  drawText: true,
+                  errorBuilder: (context, error) => const Text('تعذر إنشاء الباركود'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'ردود المحلات',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 8),
         StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance.collection('size_requests').doc(code).snapshots(),
           builder: (context, snap) {
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            if (!snap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
             final responses = (snap.data!.data()?['responses'] as List?)
                     ?.whereType<Map>()
                     .map((e) => Map<String, dynamic>.from(e))
@@ -237,14 +274,19 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
                 <Map<String, dynamic>>[];
             responses.sort((a, b) => ((a['price'] as num?)?.toInt() ?? 0)
                 .compareTo((b['price'] as num?)?.toInt() ?? 0));
+
             if (responses.isEmpty) {
               return const Card(
                 child: Padding(
                   padding: EdgeInsets.all(18),
-                  child: Text('بعد ماكو ردود. من يرد محل راح يظهر عرضه هنا مباشرة.'),
+                  child: Text(
+                    'بعد ماكو ردود. من يرد محل راح يظهر عرضه هنا مباشرة.',
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               );
             }
+
             return Column(
               children: responses.map((r) {
                 final price = (r['price'] as num?)?.toInt() ?? 0;
@@ -254,11 +296,17 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
                       backgroundColor: _sizeRequestYellow,
                       child: Icon(Icons.storefront, color: Colors.black),
                     ),
-                    title: Text('${r['shopName'] ?? 'محل'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(
+                      '${r['shopName'] ?? 'محل'}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     subtitle: Text('${r['note'] ?? 'متوفر'}'),
                     trailing: Text(
                       '${_sizeMoney(price)} د.ع',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                 );
@@ -268,7 +316,7 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
         ),
         const SizedBox(height: 14),
         const Text(
-          'احتفظ بالكود لحين اختيار العرض المناسب.',
+          'احتفظ بالكود والباركود لحين اختيار العرض المناسب.',
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 18),
@@ -285,17 +333,23 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
 class ShopSizeRequestsEnhancedPage extends StatelessWidget {
   const ShopSizeRequestsEnhancedPage({super.key});
 
-  Future<void> _quote(BuildContext context, DocumentReference<Map<String, dynamic>> ref) async {
+  Future<void> _quote(
+    BuildContext context,
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
     final shop = await ShopStore.load();
     if (shop == null) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل حساب المحل أولاً')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('سجل حساب المحل أولاً')),
+        );
       }
       return;
     }
 
     final priceController = TextEditingController();
     final noteController = TextEditingController(text: 'متوفر');
+
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -306,17 +360,26 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
             TextField(
               controller: priceController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'السعر النهائي د.ع', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'السعر النهائي د.ع',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: noteController,
-              decoration: const InputDecoration(labelText: 'ملاحظة', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'ملاحظة',
+                border: OutlineInputBorder(),
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, {
               'price': priceController.text.trim(),
@@ -327,13 +390,18 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
         ],
       ),
     );
+
     priceController.dispose();
     noteController.dispose();
+
     if (result == null) return;
+
     final price = int.tryParse(result['price'] ?? '');
     if (price == null || price <= 0) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اكتب سعر صحيح')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('اكتب سعر صحيح')),
+        );
       }
       return;
     }
@@ -341,12 +409,14 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
     final snap = await ref.get();
     final data = snap.data();
     if (data == null || data['status'] != 'open') return;
+
     final oldResponses = (data['responses'] as List?)
             ?.whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))
             .where((e) => '${e['shopId'] ?? ''}' != shop.id)
             .toList() ??
         <Map<String, dynamic>>[];
+
     oldResponses.add({
       'shopId': shop.id,
       'shopName': shop.name,
@@ -354,50 +424,75 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
       'note': (result['note'] ?? '').isEmpty ? 'متوفر' : result['note'],
       'quotedAt': DateTime.now().toIso8601String(),
     });
-    await ref.update({'responses': oldResponses, 'lastResponseAt': FieldValue.serverTimestamp()});
+
+    await ref.update({
+      'responses': oldResponses,
+      'lastResponseAt': FieldValue.serverTimestamp(),
+    });
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال العرض للزبون')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إرسال العرض للزبون')),
+      );
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('طلبات القياسات')), 
-        body: Directionality(
-          textDirection: TextDirection.rtl,
-          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance.collection('size_requests').where('status', isEqualTo: 'open').snapshots(),
-            builder: (context, snap) {
-              if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-              final docs = snap.data!.docs.toList();
-              if (docs.isEmpty) return const Center(child: Text('ماكو طلبات قياسات مفتوحة حالياً'));
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: docs.length,
-                itemBuilder: (context, index) {
-                  final d = docs[index];
-                  final data = d.data();
-                  final responses = (data['responses'] as List?)?.length ?? 0;
-                  return Card(
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: _sizeRequestYellow,
-                        child: Icon(Icons.straighten, color: Colors.black),
-                      ),
-                      title: Text('${data['type'] ?? 'إطار'} ${data['size'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('${data['requestCode'] ?? d.id}\nردود المحلات: $responses'),
-                      isThreeLine: true,
-                      trailing: FilledButton(
-                        onPressed: () => _quote(context, d.reference),
-                        child: const Text('أرسل سعر'),
-                      ),
-                    ),
-                  );
-                },
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('طلبات القياسات')),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('size_requests')
+              .where('status', isEqualTo: 'open')
+              .snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final docs = snap.data!.docs.toList();
+            if (docs.isEmpty) {
+              return const Center(
+                child: Text('ماكو طلبات قياسات مفتوحة حالياً'),
               );
-            },
-          ),
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final d = docs[index];
+                final data = d.data();
+                final responses = (data['responses'] as List?)?.length ?? 0;
+
+                return Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: _sizeRequestYellow,
+                      child: Icon(Icons.straighten, color: Colors.black),
+                    ),
+                    title: Text(
+                      '${data['type'] ?? 'إطار'} ${data['size'] ?? ''}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      'كود: ${data['requestCode'] ?? d.id}\nردود المحلات: $responses',
+                    ),
+                    isThreeLine: true,
+                    trailing: FilledButton(
+                      onPressed: () => _quote(context, d.reference),
+                      child: const Text('أرسل سعر'),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         ),
-      );
+      ),
+    );
+  }
 }
