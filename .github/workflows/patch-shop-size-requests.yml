@@ -1,0 +1,110 @@
+name: Patch Shop Size Requests
+
+on:
+  push:
+    branches:
+      - shop-size-requests-live-20260901
+    paths:
+      - .github/workflows/patch-shop-size-requests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: shop-size-requests-live-20260901
+          fetch-depth: 0
+      - name: Patch shop dashboard
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/shop_dashboard.dart')
+          s = p.read_text()
+          if "import 'size_request_page.dart';" not in s:
+              s = s.replace("import 'shop_store.dart';\n", "import 'shop_store.dart';\nimport 'size_request_page.dart';\n")
+          marker = "                  const SizedBox(height: 12),\n                  Row(\n"
+          block = """                  const SizedBox(height: 12),
+                  StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance
+                        .collection('size_requests')
+                        .where('status', isEqualTo: 'open')
+                        .snapshots(),
+                    builder: (context, sizeSnap) {
+                      final count = sizeSnap.data?.docs.length ?? 0;
+                      return Card(
+                        color: count > 0 ? shopYellow : null,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: count > 0 ? Colors.black : shopYellow,
+                            child: Icon(
+                              Icons.straighten,
+                              color: count > 0 ? shopYellow : Colors.black,
+                            ),
+                          ),
+                          title: const Text(
+                            'طلبات القياسات',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            sizeSnap.hasError
+                                ? 'تعذر تحميل طلبات القياسات'
+                                : count > 0
+                                    ? '$count طلب مفتوح بانتظار عروض المحلات'
+                                    : 'ماكو طلبات قياسات مفتوحة حالياً',
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (count > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '$count',
+                                    style: const TextStyle(
+                                      color: shopYellow,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.arrow_back_ios_new, size: 16),
+                            ],
+                          ),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ShopSizeRequestsEnhancedPage(),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+"""
+          if "'طلبات القياسات'" not in s:
+              if marker not in s:
+                  raise SystemExit('dashboard insertion marker not found')
+              s = s.replace(marker, block, 1)
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          if git diff --quiet; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/shop_dashboard.dart
+          git commit -m "Show live size requests in shop dashboard"
+          git push origin HEAD:shop-size-requests-live-20260901
