@@ -7,6 +7,10 @@ service cloud.firestore {
     function isShop() { return signedIn() && userDoc().data.role == 'shop'; }
     function shopId() { return userDoc().data.shopId; }
 
+    function terminalStatus(status) {
+      return status in ['completed', 'cancelled', 'expired'];
+    }
+
     function orderCoreUnchanged() {
       return request.resource.data.price == resource.data.price
         && request.resource.data.commission == resource.data.commission
@@ -16,7 +20,7 @@ service cloud.firestore {
         && request.resource.data.shopId == resource.data.shopId
         && request.resource.data.shopName == resource.data.shopName
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.expiresAt == resource.data.expiresAt
+        && request.resource.data.get('expiresAt', null) == resource.data.get('expiresAt', null)
         && request.resource.data.get('priceLocked', false) == resource.data.get('priceLocked', false);
     }
 
@@ -31,6 +35,24 @@ service cloud.firestore {
         'settlementStatus',
         'inventoryConsumedAt'
       ]);
+    }
+
+    function shopLifecycleSafe() {
+      return (resource.data.get('completed', false) != true
+          || request.resource.data.get('completed', false) == true)
+        && (!terminalStatus(resource.data.get('status', 'new'))
+          || request.resource.data.get('status', 'new') == resource.data.get('status', 'new'));
+    }
+
+    function customerLifecycleSafe() {
+      return resource.data.get('completed', false) != true
+        && !terminalStatus(resource.data.get('status', 'new'));
+    }
+
+    function targetShopAvailable() {
+      return request.resource.data.shopId is string
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.approved == true
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.get('status', 'approved') != 'suspended';
     }
 
     match /users/{uid} {
@@ -62,7 +84,10 @@ service cloud.firestore {
         && request.resource.data.commission >= 0
         && request.resource.data.priceLocked == true
         && request.resource.data.status == 'new'
-        && request.resource.data.completed == false;
+        && request.resource.data.completed == false
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.expiresAt is timestamp
+        && targetShopAvailable();
       allow get: if true;
       allow list: if isAdmin() || isShop();
       allow update: if isAdmin()
@@ -71,9 +96,11 @@ service cloud.firestore {
           && resource.data.shopId == shopId()
           && orderCoreUnchanged()
           && shopOrderFieldsAllowed()
+          && shopLifecycleSafe()
         )
         || (
           orderCoreUnchanged()
+          && customerLifecycleSafe()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status',
             'statusUpdatedAt',
