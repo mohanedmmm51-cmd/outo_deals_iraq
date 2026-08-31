@@ -262,18 +262,25 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
         ),
         const SizedBox(height: 8),
         StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('size_requests').doc(code).snapshots(),
+          stream: FirebaseFirestore.instance
+              .collection('size_requests')
+              .doc(code)
+              .snapshots(),
           builder: (context, snap) {
             if (!snap.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
+
             final responses = (snap.data!.data()?['responses'] as List?)
                     ?.whereType<Map>()
                     .map((e) => Map<String, dynamic>.from(e))
                     .toList() ??
                 <Map<String, dynamic>>[];
-            responses.sort((a, b) => ((a['price'] as num?)?.toInt() ?? 0)
-                .compareTo((b['price'] as num?)?.toInt() ?? 0));
+
+            responses.sort(
+              (a, b) => ((a['price'] as num?)?.toInt() ?? 0)
+                  .compareTo((b['price'] as num?)?.toInt() ?? 0),
+            );
 
             if (responses.isEmpty) {
               return const Card(
@@ -288,8 +295,8 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
             }
 
             return Column(
-              children: responses.map((r) {
-                final price = (r['price'] as num?)?.toInt() ?? 0;
+              children: responses.map((response) {
+                final price = (response['price'] as num?)?.toInt() ?? 0;
                 return Card(
                   child: ListTile(
                     leading: const CircleAvatar(
@@ -297,10 +304,10 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
                       child: Icon(Icons.storefront, color: Colors.black),
                     ),
                     title: Text(
-                      '${r['shopName'] ?? 'محل'}',
+                      '${response['shopName'] ?? 'محل'}',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: Text('${r['note'] ?? 'متوفر'}'),
+                    subtitle: Text('${response['note'] ?? 'متوفر'}'),
                     trailing: Text(
                       '${_sizeMoney(price)} د.ع',
                       style: const TextStyle(
@@ -330,36 +337,62 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
   }
 }
 
-class ShopSizeRequestsEnhancedPage extends StatelessWidget {
-  const ShopSizeRequestsEnhancedPage({super.key});
+class _QuoteResult {
+  final int price;
+  final String note;
 
-  Future<void> _quote(
-    BuildContext context,
-    DocumentReference<Map<String, dynamic>> ref,
-  ) async {
-    final shop = await ShopStore.load();
-    if (shop == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('سجل حساب المحل أولاً')),
-        );
-      }
+  const _QuoteResult({required this.price, required this.note});
+}
+
+class _QuoteDialog extends StatefulWidget {
+  const _QuoteDialog();
+
+  @override
+  State<_QuoteDialog> createState() => _QuoteDialogState();
+}
+
+class _QuoteDialogState extends State<_QuoteDialog> {
+  final priceController = TextEditingController();
+  final noteController = TextEditingController(text: 'متوفر');
+  String? error;
+
+  @override
+  void dispose() {
+    priceController.dispose();
+    noteController.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    final price = int.tryParse(priceController.text.trim());
+    if (price == null || price <= 0) {
+      setState(() => error = 'اكتب سعر صحيح');
       return;
     }
 
-    final priceController = TextEditingController();
-    final noteController = TextEditingController(text: 'متوفر');
+    Navigator.of(context).pop(
+      _QuoteResult(
+        price: price,
+        note: noteController.text.trim().isEmpty
+            ? 'متوفر'
+            : noteController.text.trim(),
+      ),
+    );
+  }
 
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('إرسال عرض للزبون'),
-        content: Column(
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('إرسال عرض للزبون'),
+      content: SingleChildScrollView(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: priceController,
+              autofocus: true,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'السعر النهائي د.ع',
                 border: OutlineInputBorder(),
@@ -368,71 +401,102 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(
               controller: noteController,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _send(),
               decoration: const InputDecoration(
                 labelText: 'ملاحظة',
                 border: OutlineInputBorder(),
               ),
             ),
+            if (error != null) ...[
+              const SizedBox(height: 10),
+              Text(error!, style: const TextStyle(color: Colors.red)),
+            ],
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, {
-              'price': priceController.text.trim(),
-              'note': noteController.text.trim(),
-            }),
-            child: const Text('إرسال'),
-          ),
-        ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          onPressed: _send,
+          child: const Text('إرسال'),
+        ),
+      ],
     );
+  }
+}
 
-    priceController.dispose();
-    noteController.dispose();
+class ShopSizeRequestsEnhancedPage extends StatelessWidget {
+  const ShopSizeRequestsEnhancedPage({super.key});
 
-    if (result == null) return;
+  Future<void> _quote(
+    BuildContext context,
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
+    final shop = await ShopStore.load();
+    if (!context.mounted) return;
 
-    final price = int.tryParse(result['price'] ?? '');
-    if (price == null || price <= 0) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('اكتب سعر صحيح')),
-        );
-      }
+    if (shop == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('سجل حساب المحل أولاً')),
+      );
       return;
     }
 
-    final snap = await ref.get();
-    final data = snap.data();
-    if (data == null || data['status'] != 'open') return;
+    final result = await showDialog<_QuoteResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _QuoteDialog(),
+    );
 
-    final oldResponses = (data['responses'] as List?)
-            ?.whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .where((e) => '${e['shopId'] ?? ''}' != shop.id)
-            .toList() ??
-        <Map<String, dynamic>>[];
+    if (!context.mounted || result == null) return;
 
-    oldResponses.add({
-      'shopId': shop.id,
-      'shopName': shop.name,
-      'price': price,
-      'note': (result['note'] ?? '').isEmpty ? 'متوفر' : result['note'],
-      'quotedAt': DateTime.now().toIso8601String(),
-    });
+    try {
+      final db = FirebaseFirestore.instance;
+      await db.runTransaction((transaction) async {
+        final snap = await transaction.get(ref);
+        final data = snap.data();
 
-    await ref.update({
-      'responses': oldResponses,
-      'lastResponseAt': FieldValue.serverTimestamp(),
-    });
+        if (!snap.exists || data == null) {
+          throw StateError('طلب القياس غير موجود');
+        }
+        if (data['status'] != 'open') {
+          throw StateError('هذا الطلب مغلق وما يقبل عروض جديدة');
+        }
 
-    if (context.mounted) {
+        final responses = (data['responses'] as List?)
+                ?.whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .where((e) => '${e['shopId'] ?? ''}' != shop.id)
+                .toList() ??
+            <Map<String, dynamic>>[];
+
+        responses.add({
+          'shopId': shop.id,
+          'shopName': shop.name,
+          'price': result.price,
+          'note': result.note,
+          'quotedAt': DateTime.now().toIso8601String(),
+        });
+
+        transaction.update(ref, {
+          'responses': responses,
+          'lastResponseAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم إرسال العرض للزبون')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      final message = e.toString().replaceFirst('Bad state: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر إرسال العرض: $message')),
       );
     }
   }
@@ -449,11 +513,31 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
               .where('status', isEqualTo: 'open')
               .snapshots(),
           builder: (context, snap) {
+            if (snap.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'تعذر تحميل طلبات القياسات: ${snap.error}',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
+
             if (!snap.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
             final docs = snap.data!.docs.toList();
+            docs.sort((a, b) {
+              final aTime = a.data()['createdAt'];
+              final bTime = b.data()['createdAt'];
+              final aMillis = aTime is Timestamp ? aTime.millisecondsSinceEpoch : 0;
+              final bMillis = bTime is Timestamp ? bTime.millisecondsSinceEpoch : 0;
+              return bMillis.compareTo(aMillis);
+            });
+
             if (docs.isEmpty) {
               return const Center(
                 child: Text('ماكو طلبات قياسات مفتوحة حالياً'),
@@ -464,11 +548,12 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               itemCount: docs.length,
               itemBuilder: (context, index) {
-                final d = docs[index];
-                final data = d.data();
+                final doc = docs[index];
+                final data = doc.data();
                 final responses = (data['responses'] as List?)?.length ?? 0;
 
                 return Card(
+                  key: ValueKey(doc.id),
                   child: ListTile(
                     leading: const CircleAvatar(
                       backgroundColor: _sizeRequestYellow,
@@ -479,11 +564,12 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(
-                      'كود: ${data['requestCode'] ?? d.id}\nردود المحلات: $responses',
+                      'كود: ${data['requestCode'] ?? doc.id}\n'
+                      'ردود المحلات: $responses',
                     ),
                     isThreeLine: true,
                     trailing: FilledButton(
-                      onPressed: () => _quote(context, d.reference),
+                      onPressed: () => _quote(context, doc.reference),
                       child: const Text('أرسل سعر'),
                     ),
                   ),
