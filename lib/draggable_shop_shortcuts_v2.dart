@@ -103,7 +103,6 @@ class _DraggableShopShortcutsV2State extends State<DraggableShopShortcutsV2> {
                     bottom: safe.bottom + 18,
                     child: _RoundShortcut(
                       size: _nearbySize,
-                      tooltip: 'المحلات القريبة',
                       icon: Icons.near_me,
                       onTap: () => _push(const OnlineNearbyShopsPage()),
                     ),
@@ -182,33 +181,28 @@ class _ScannerShortcut extends StatelessWidget {
 
 class _RoundShortcut extends StatelessWidget {
   final double size;
-  final String tooltip;
   final IconData icon;
   final VoidCallback onTap;
 
   const _RoundShortcut({
     required this.size,
-    required this.tooltip,
     required this.icon,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        elevation: 6,
-        shape: const CircleBorder(),
-        color: Theme.of(context).colorScheme.primaryContainer,
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: size,
-            height: size,
-            child: Icon(icon),
-          ),
+    return Material(
+      elevation: 6,
+      shape: const CircleBorder(),
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(icon),
         ),
       ),
     );
