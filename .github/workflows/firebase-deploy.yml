@@ -7,7 +7,6 @@ on:
       - main
     paths:
       - 'firestore.rules'
-      - 'storage.rules'
       - 'firebase.json'
       - 'functions/**'
       - '.github/workflows/firebase-deploy.yml'
@@ -75,9 +74,9 @@ jobs:
         working-directory: functions
         run: npm install --omit=dev
 
-      - name: Deploy Firestore and Storage rules
+      - name: Deploy Firestore rules
         if: steps.credentials.outputs.configured == 'true'
-        run: firebase deploy --only firestore,storage --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
+        run: firebase deploy --only firestore:rules --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
 
       - name: Detect Functions changes
         if: steps.credentials.outputs.configured == 'true' && github.event_name == 'push'
