@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'shop_store.dart';
+import 'size_request_page.dart';
 
 const shopYellow = Color(0xFFFFD400);
 
@@ -40,10 +41,10 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
 
   Future<void> _loadProfile() async {
     try {
-      final p = await ShopStore.load();
+      final value = await ShopStore.load();
       if (!mounted) return;
       setState(() {
-        profile = p;
+        profile = value;
         loading = false;
       });
     } catch (e) {
@@ -67,10 +68,10 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
 
     setState(() => loading = true);
     try {
-      final p = await ShopStore.save(name: name, phone: phone);
+      final value = await ShopStore.save(name: name, phone: phone);
       if (!mounted) return;
       setState(() {
-        profile = p;
+        profile = value;
         loading = false;
       });
     } catch (e) {
@@ -94,7 +95,6 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
     if (loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
     if (profile == null) return _buildCreateAccount();
     return _buildDashboard(profile!);
   }
@@ -121,7 +121,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                     ),
                     SizedBox(height: 6),
                     Text(
-                      'هذا الحساب يربط الطلبات المنفذة بالمحل ويحسب العمولة والتسوية الأسبوعية.',
+                      'هذا الحساب يربط الطلبات بالمحل ويحسب العمولة والتسوية الأسبوعية.',
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -164,7 +164,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
     );
   }
 
-  Widget _buildDashboard(ShopProfile p) {
+  Widget _buildDashboard(ShopProfile shop) {
     return Scaffold(
       appBar: AppBar(title: const Text('حساب المحل والعمولات')),
       body: Directionality(
@@ -172,7 +172,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('orders')
-              .where('shopId', isEqualTo: p.id)
+              .where('shopId', isEqualTo: shop.id)
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
@@ -184,11 +184,8 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
 
             final docs = snapshot.data!.docs;
             final completed = docs.where((d) => d.data()['completed'] == true).toList();
-            completed.sort((a, b) {
-              final ad = _asDate(a.data()['completedAt']);
-              final bd = _asDate(b.data()['completedAt']);
-              return bd.compareTo(ad);
-            });
+            completed.sort((a, b) =>
+                _asDate(b.data()['completedAt']).compareTo(_asDate(a.data()['completedAt'])));
 
             final start = _weekStart(DateTime.now());
             final end = start.add(const Duration(days: 7));
@@ -218,27 +215,9 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  Card(
-                    color: const Color(0xff171717),
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(p.name,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text(p.phone, style: const TextStyle(color: Colors.white70)),
-                          const SizedBox(height: 4),
-                          Text('رقم المحل: ${p.id}',
-                              style: const TextStyle(color: Colors.white70)),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _shopHeader(shop),
+                  const SizedBox(height: 12),
+                  _liveSizeRequestsCard(),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -272,7 +251,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                     onPressed: unassigned.isEmpty
                         ? null
                         : () => _createWeeklyStatement(
-                              profile: p,
+                              profile: shop,
                               weekStart: start,
                               orders: unassigned,
                             ),
@@ -312,8 +291,101 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
     );
   }
 
-  Widget _statCard(String title, String value, IconData icon,
-      {bool highlight = false}) {
+  Widget _shopHeader(ShopProfile shop) {
+    return Card(
+      color: const Color(0xff171717),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              shop.name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(shop.phone, style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 4),
+            Text('رقم المحل: ${shop.id}', style: const TextStyle(color: Colors.white70)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _liveSizeRequestsCard() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('size_requests')
+          .where('status', isEqualTo: 'open')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final count = snapshot.data?.docs.length ?? 0;
+        return Card(
+          color: count > 0 ? shopYellow : null,
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: count > 0 ? Colors.black : shopYellow,
+              child: Icon(
+                Icons.straighten,
+                color: count > 0 ? shopYellow : Colors.black,
+              ),
+            ),
+            title: const Text(
+              'طلبات القياسات',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              snapshot.hasError
+                  ? 'تعذر تحميل طلبات القياسات'
+                  : count > 0
+                      ? '$count طلب مفتوح بانتظار عروض المحلات'
+                      : 'ماكو طلبات قياسات مفتوحة حالياً',
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (count > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: const TextStyle(
+                        color: shopYellow,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 6),
+                const Icon(Icons.arrow_back_ios_new, size: 16),
+              ],
+            ),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ShopSizeRequestsEnhancedPage(),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _statCard(
+    String title,
+    String value,
+    IconData icon, {
+    bool highlight = false,
+  }) {
     return Card(
       color: highlight ? shopYellow : null,
       child: Padding(
@@ -324,9 +396,11 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             const SizedBox(height: 6),
             Text(title, textAlign: TextAlign.center),
             const SizedBox(height: 4),
-            Text(value,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(
+              value,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
           ],
         ),
       ),
@@ -341,8 +415,10 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
           backgroundColor: settled ? Colors.green : shopYellow,
           child: Icon(settled ? Icons.done_all : Icons.check, color: Colors.black),
         ),
-        title: Text('${data['title'] ?? ''}',
-            style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          '${data['title'] ?? ''}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         subtitle: Text(
           '${data['code'] ?? ''}\n'
           'السعر: ${_money((data['price'] as num?)?.toInt() ?? 0)} د.ع • '
@@ -371,7 +447,9 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
       if (existing.exists && existingStatus == 'paid') {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم تسديد كشف هذا الأسبوع ولا يمكن إضافة طلبات جديدة له')),
+          const SnackBar(
+            content: Text('تم تسديد كشف هذا الأسبوع ولا يمكن إضافة طلبات جديدة له'),
+          ),
         );
         return;
       }
@@ -399,24 +477,29 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
       );
       final mergedCodes = <String>{...oldCodes, ...newOrders.map((d) => d.id)}.toList();
       final previousSales = (existingData?['totalSales'] as num?)?.toInt() ?? 0;
-      final previousCommission = (existingData?['totalCommission'] as num?)?.toInt() ?? 0;
+      final previousCommission =
+          (existingData?['totalCommission'] as num?)?.toInt() ?? 0;
 
       final batch = db.batch();
-      batch.set(statementRef, {
-        'id': settlementId,
-        'shopId': profile.id,
-        'shopName': profile.name,
-        'weekStart': Timestamp.fromDate(weekStart),
-        'weekEnd': Timestamp.fromDate(weekStart.add(const Duration(days: 7))),
-        'totalSales': previousSales + newSales,
-        'totalCommission': previousCommission + newCommission,
-        'orderCount': mergedCodes.length,
-        'orderCodes': mergedCodes,
-        'status': 'pending',
-        if (!existing.exists) 'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'paidAt': null,
-      }, SetOptions(merge: true));
+      batch.set(
+        statementRef,
+        {
+          'id': settlementId,
+          'shopId': profile.id,
+          'shopName': profile.name,
+          'weekStart': Timestamp.fromDate(weekStart),
+          'weekEnd': Timestamp.fromDate(weekStart.add(const Duration(days: 7))),
+          'totalSales': previousSales + newSales,
+          'totalCommission': previousCommission + newCommission,
+          'orderCount': mergedCodes.length,
+          'orderCodes': mergedCodes,
+          'status': 'pending',
+          if (!existing.exists) 'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'paidAt': null,
+        },
+        SetOptions(merge: true),
+      );
 
       for (final order in newOrders) {
         batch.update(order.reference, {
