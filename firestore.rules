@@ -12,12 +12,25 @@ service cloud.firestore {
         && request.resource.data.commission == resource.data.commission
         && request.resource.data.title == resource.data.title
         && request.resource.data.detail == resource.data.detail
-        && request.resource.data.productId == resource.data.productId
+        && request.resource.data.get('productId', '') == resource.data.get('productId', '')
         && request.resource.data.shopId == resource.data.shopId
         && request.resource.data.shopName == resource.data.shopName
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.expiresAt == resource.data.expiresAt
-        && request.resource.data.priceLocked == resource.data.priceLocked;
+        && request.resource.data.get('priceLocked', false) == resource.data.get('priceLocked', false);
+    }
+
+    function shopOrderFieldsAllowed() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status',
+        'statusUpdatedAt',
+        'acceptedAt',
+        'completed',
+        'completedAt',
+        'settlementId',
+        'settlementStatus',
+        'inventoryConsumedAt'
+      ]);
     }
 
     match /users/{uid} {
@@ -53,7 +66,12 @@ service cloud.firestore {
       allow get: if true;
       allow list: if isAdmin() || isShop();
       allow update: if isAdmin()
-        || (isShop() && resource.data.shopId == shopId() && orderCoreUnchanged())
+        || (
+          isShop()
+          && resource.data.shopId == shopId()
+          && orderCoreUnchanged()
+          && shopOrderFieldsAllowed()
+        )
         || (
           orderCoreUnchanged()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
