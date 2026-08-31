@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'customer_cart.dart';
 import 'legacy_main.dart' as legacy;
 import 'order_system.dart';
 
@@ -73,6 +74,7 @@ class TireDetailsPage extends StatelessWidget {
       future: _remotePrice('tires', tire.size, tire.price),
       builder: (context, snap) {
         final price = snap.data ?? tire.price;
+        const detail = 'سعر الزوج • شد وبلنص حسب العرض';
         return Scaffold(
           appBar: AppBar(title: const Text('تفاصيل الإطار')),
           body: Directionality(
@@ -112,7 +114,7 @@ class TireDetailsPage extends StatelessWidget {
                     MaterialPageRoute(
                       builder: (_) => OrderTicketPage(
                         title: 'إطار ${tire.size}',
-                        detail: 'سعر الزوج • شد وبلنص حسب العرض',
+                        detail: detail,
                         price: price,
                         commission: tire.commission,
                       ),
@@ -120,6 +122,28 @@ class TireDetailsPage extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.qr_code_2),
                   label: const Text('اطلب الآن وأنشئ الكود', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(16)),
+                  onPressed: () async {
+                    await CustomerCartStore.add(
+                      CartItem(
+                        id: 'tire-${tire.size}',
+                        title: 'إطار ${tire.size}',
+                        detail: detail,
+                        price: price,
+                        commission: tire.commission,
+                      ),
+                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('تمت إضافة الإطار إلى السلة')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.add_shopping_cart),
+                  label: const Text('أضف إلى السلة'),
                 ),
               ],
             ),
@@ -185,6 +209,8 @@ class _BatteryDetailsPageState extends State<BatteryDetailsPage> {
       builder: (context, snap) {
         final price = snap.data ?? fallback;
         const commission = 3000;
+        final detail = oldBattery ? 'مع تسليم البطارية القديمة' : 'بدون تسليم البطارية القديمة';
+        final title = '${widget.battery.brand} ${widget.battery.amp}';
         return Scaffold(
           appBar: AppBar(title: const Text('تفاصيل البطارية')),
           body: Directionality(
@@ -200,7 +226,7 @@ class _BatteryDetailsPageState extends State<BatteryDetailsPage> {
                       children: [
                         const Icon(Icons.battery_charging_full, size: 80),
                         const SizedBox(height: 12),
-                        Text('${widget.battery.brand} ${widget.battery.amp}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                        Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 16),
                         RadioListTile<bool>(
                           value: true,
@@ -224,8 +250,8 @@ class _BatteryDetailsPageState extends State<BatteryDetailsPage> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => OrderTicketPage(
-                                title: '${widget.battery.brand} ${widget.battery.amp}',
-                                detail: oldBattery ? 'مع تسليم البطارية القديمة' : 'بدون تسليم البطارية القديمة',
+                                title: title,
+                                detail: detail,
                                 price: price,
                                 commission: commission,
                               ),
@@ -233,6 +259,27 @@ class _BatteryDetailsPageState extends State<BatteryDetailsPage> {
                           ),
                           icon: const Icon(Icons.qr_code_2),
                           label: const Text('اطلب الآن وأنشئ الكود'),
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            await CustomerCartStore.add(
+                              CartItem(
+                                id: 'battery-${widget.battery.brand}-${widget.battery.amp}-${oldBattery ? 'old' : 'no-old'}',
+                                title: title,
+                                detail: detail,
+                                price: price,
+                                commission: commission,
+                              ),
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('تمت إضافة البطارية إلى السلة')),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.add_shopping_cart),
+                          label: const Text('أضف إلى السلة'),
                         ),
                       ],
                     ),
