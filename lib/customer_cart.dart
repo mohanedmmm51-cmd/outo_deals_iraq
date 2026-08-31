@@ -19,6 +19,7 @@ class CartItem {
   final String detail;
   final int price;
   final int commission;
+  final String productId;
 
   const CartItem({
     required this.id,
@@ -26,6 +27,7 @@ class CartItem {
     required this.detail,
     required this.price,
     required this.commission,
+    this.productId = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -34,6 +36,7 @@ class CartItem {
         'detail': detail,
         'price': price,
         'commission': commission,
+        'productId': productId,
       };
 
   factory CartItem.fromJson(Map<String, dynamic> json) => CartItem(
@@ -42,6 +45,7 @@ class CartItem {
         detail: '${json['detail'] ?? ''}',
         price: (json['price'] as num?)?.toInt() ?? 0,
         commission: (json['commission'] as num?)?.toInt() ?? 0,
+        productId: '${json['productId'] ?? ''}',
       );
 }
 
@@ -191,6 +195,7 @@ class _CustomerCartPageState extends State<CustomerCartPage> {
                                         detail: item.detail,
                                         price: item.price,
                                         commission: item.commission,
+                                        productId: item.productId,
                                       ),
                                     ),
                                   ),

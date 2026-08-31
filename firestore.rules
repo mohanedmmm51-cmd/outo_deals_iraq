@@ -7,6 +7,54 @@ service cloud.firestore {
     function isShop() { return signedIn() && userDoc().data.role == 'shop'; }
     function shopId() { return userDoc().data.shopId; }
 
+    function terminalStatus(status) {
+      return status in ['completed', 'cancelled', 'expired'];
+    }
+
+    function orderCoreUnchanged() {
+      return request.resource.data.price == resource.data.price
+        && request.resource.data.commission == resource.data.commission
+        && request.resource.data.title == resource.data.title
+        && request.resource.data.detail == resource.data.detail
+        && request.resource.data.get('productId', '') == resource.data.get('productId', '')
+        && request.resource.data.shopId == resource.data.shopId
+        && request.resource.data.shopName == resource.data.shopName
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.get('expiresAt', null) == resource.data.get('expiresAt', null)
+        && request.resource.data.get('priceLocked', false) == resource.data.get('priceLocked', false);
+    }
+
+    function shopOrderFieldsAllowed() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status',
+        'statusUpdatedAt',
+        'acceptedAt',
+        'completed',
+        'completedAt',
+        'settlementId',
+        'settlementStatus',
+        'inventoryConsumedAt'
+      ]);
+    }
+
+    function shopLifecycleSafe() {
+      return (resource.data.get('completed', false) != true
+          || request.resource.data.get('completed', false) == true)
+        && (!terminalStatus(resource.data.get('status', 'new'))
+          || request.resource.data.get('status', 'new') == resource.data.get('status', 'new'));
+    }
+
+    function customerLifecycleSafe() {
+      return resource.data.get('completed', false) != true
+        && !terminalStatus(resource.data.get('status', 'new'));
+    }
+
+    function targetShopAvailable() {
+      return request.resource.data.shopId is string
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.approved == true
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.get('status', 'approved') != 'suspended';
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn() && request.auth.uid == uid && request.resource.data.role == 'shop';
@@ -19,32 +67,115 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow update: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
       allow delete: if isAdmin();
-      match /inventory/{itemId} { allow read: if true; allow create, update, delete: if isAdmin() || (isShop() && shopId() == id); }
-      match /branches/{branchId} { allow read: if true; allow create, update, delete: if isAdmin() || (isShop() && shopId() == id); }
+      match /inventory/{itemId} {
+        allow read: if true;
+        allow create, update, delete: if isAdmin() || (isShop() && shopId() == id);
+      }
+      match /branches/{branchId} {
+        allow read: if true;
+        allow create, update, delete: if isAdmin() || (isShop() && shopId() == id);
+      }
     }
 
     match /orders/{code} {
-      allow create: if true;
+      allow create: if request.resource.data.price is int
+        && request.resource.data.price > 0
+        && request.resource.data.commission is int
+        && request.resource.data.commission >= 0
+        && request.resource.data.priceLocked == true
+        && request.resource.data.status == 'new'
+        && request.resource.data.completed == false
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.expiresAt is timestamp
+        && targetShopAvailable();
       allow get: if true;
       allow list: if isAdmin() || isShop();
-      allow update: if isAdmin() || (isShop() && resource.data.shopId == shopId()) || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','statusUpdatedAt','cancelledAt']) && request.resource.data.status in ['on_the_way','cancelled']);
+      allow update: if isAdmin()
+        || (
+          isShop()
+          && resource.data.shopId == shopId()
+          && orderCoreUnchanged()
+          && shopOrderFieldsAllowed()
+          && shopLifecycleSafe()
+        )
+        || (
+          orderCoreUnchanged()
+          && customerLifecycleSafe()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'statusUpdatedAt',
+            'cancelledAt'
+          ])
+          && request.resource.data.status in ['on_the_way','cancelled']
+        );
       allow delete: if isAdmin();
-      match /notes/{noteId} { allow read, create: if true; allow update, delete: if isAdmin(); }
+      match /notes/{noteId} {
+        allow read, create: if true;
+        allow update, delete: if isAdmin();
+      }
     }
 
-    match /settlements/{id} { allow read: if isAdmin() || (isShop() && resource.data.shopId == shopId()); allow create: if isShop() && request.resource.data.shopId == shopId(); allow update, delete: if isAdmin(); }
-    match /offers/{id} { allow read: if resource.data.approved == true || isAdmin() || (isShop() && resource.data.shopId == shopId()); allow create: if isShop() && request.resource.data.shopId == shopId(); allow update: if isAdmin() || (isShop() && resource.data.shopId == shopId() && resource.data.approved != true); allow delete: if isAdmin() || (isShop() && resource.data.shopId == shopId()); }
-    match /size_requests/{id} { allow create, get: if true; allow list: if isAdmin() || isShop(); allow update: if isAdmin() || isShop(); allow delete: if isAdmin(); }
-    match /ratings/{orderCode} { allow create, get: if true; allow list: if true; allow update, delete: if isAdmin(); }
-    match /complaints/{id} { allow create: if true; allow read, update, delete: if isAdmin(); }
-    match /notifications/{id} { allow get, list, create: if true; allow update, delete: if isAdmin(); }
-    match /price_rules/{id} { allow read: if true; allow create, update, delete: if isAdmin(); }
-    match /price_history/{id} { allow read: if true; allow create, update, delete: if isAdmin(); }
-    match /audit_logs/{id} { allow read: if isAdmin(); allow create: if signedIn(); allow update, delete: if false; }
+    match /settlements/{id} {
+      allow read: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow create: if isShop() && request.resource.data.shopId == shopId();
+      allow update, delete: if isAdmin();
+    }
+    match /offers/{id} {
+      allow read: if resource.data.approved == true || isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow create: if isShop() && request.resource.data.shopId == shopId();
+      allow update: if isAdmin() || (isShop() && resource.data.shopId == shopId() && resource.data.approved != true);
+      allow delete: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+    }
+    match /size_requests/{id} {
+      allow create, get: if true;
+      allow list: if isAdmin() || isShop();
+      allow update: if isAdmin() || isShop();
+      allow delete: if isAdmin();
+    }
+    match /ratings/{orderCode} {
+      allow create, get: if true;
+      allow list: if true;
+      allow update, delete: if isAdmin();
+    }
+    match /complaints/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+    match /notifications/{id} {
+      allow get, list, create: if true;
+      allow update, delete: if isAdmin();
+    }
+    match /price_rules/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /price_history/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+    match /audit_logs/{id} {
+      allow read: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
 
-    match /availability_watch/{id} { allow create, get: if true; allow list, update, delete: if isAdmin() || isShop(); }
-    match /appointments/{id} { allow create, get: if true; allow list, update: if isAdmin() || isShop(); allow delete: if isAdmin(); }
-    match /coupons/{code} { allow read: if true; allow create, update, delete: if isAdmin() || isShop(); }
-    match /media/{id} { allow read: if true; allow create: if signedIn(); allow update, delete: if isAdmin() || isShop(); }
+    match /availability_watch/{id} {
+      allow create, get: if true;
+      allow list, update, delete: if isAdmin() || isShop();
+    }
+    match /appointments/{id} {
+      allow create, get: if true;
+      allow list, update: if isAdmin() || isShop();
+      allow delete: if isAdmin();
+    }
+    match /coupons/{code} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() || isShop();
+    }
+    match /media/{id} {
+      allow read: if true;
+      allow create: if signedIn();
+      allow update, delete: if isAdmin() || isShop();
+    }
   }
 }

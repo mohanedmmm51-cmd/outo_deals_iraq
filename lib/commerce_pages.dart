@@ -75,6 +75,7 @@ class TireDetailsPage extends StatelessWidget {
       builder: (context, snap) {
         final price = snap.data ?? tire.price;
         const detail = 'سعر الزوج • شد وبلنص حسب العرض';
+        final productId = 'tire-${tire.size}';
         return Scaffold(
           appBar: AppBar(title: const Text('تفاصيل الإطار')),
           body: Directionality(
@@ -103,7 +104,7 @@ class TireDetailsPage extends StatelessWidget {
                   child: ListTile(
                     leading: Icon(Icons.verified_outlined),
                     title: Text('السعر مضمون داخل التطبيق'),
-                    subtitle: Text('اعرض كود الطلب للمحل قبل بدء العمل.'),
+                    subtitle: Text('بعد إنشاء الكود يبقى السعر مثبت طول فترة صلاحية الطلب.'),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -117,6 +118,7 @@ class TireDetailsPage extends StatelessWidget {
                         detail: detail,
                         price: price,
                         commission: tire.commission,
+                        productId: productId,
                       ),
                     ),
                   ),
@@ -129,7 +131,8 @@ class TireDetailsPage extends StatelessWidget {
                   onPressed: () async {
                     await CustomerCartStore.add(
                       CartItem(
-                        id: 'tire-${tire.size}',
+                        id: productId,
+                        productId: productId,
                         title: 'إطار ${tire.size}',
                         detail: detail,
                         price: price,
@@ -211,6 +214,7 @@ class _BatteryDetailsPageState extends State<BatteryDetailsPage> {
         const commission = 3000;
         final detail = oldBattery ? 'مع تسليم البطارية القديمة' : 'بدون تسليم البطارية القديمة';
         final title = '${widget.battery.brand} ${widget.battery.amp}';
+        final productId = 'battery-${widget.battery.brand}-${widget.battery.amp}';
         return Scaffold(
           appBar: AppBar(title: const Text('تفاصيل البطارية')),
           body: Directionality(
@@ -254,6 +258,7 @@ class _BatteryDetailsPageState extends State<BatteryDetailsPage> {
                                 detail: detail,
                                 price: price,
                                 commission: commission,
+                                productId: productId,
                               ),
                             ),
                           ),
@@ -265,7 +270,8 @@ class _BatteryDetailsPageState extends State<BatteryDetailsPage> {
                           onPressed: () async {
                             await CustomerCartStore.add(
                               CartItem(
-                                id: 'battery-${widget.battery.brand}-${widget.battery.amp}-${oldBattery ? 'old' : 'no-old'}',
+                                id: '$productId-${oldBattery ? 'old' : 'no-old'}',
+                                productId: productId,
                                 title: title,
                                 detail: detail,
                                 price: price,
