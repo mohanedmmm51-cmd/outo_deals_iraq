@@ -2,7 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'advanced_features.dart';
-import 'draggable_shop_shortcuts.dart';
+import 'draggable_shop_shortcuts_v2.dart';
 import 'marketplace_features.dart';
 import 'production_features.dart';
 import 'restored_home.dart';
@@ -49,7 +49,7 @@ class App extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: yellow),
       ),
-      builder: (context, child) => DraggableShopShortcuts(
+      builder: (context, child) => DraggableShopShortcutsV2(
         navigatorKey: appNavigatorKey,
         child: child ?? const SizedBox.shrink(),
       ),
