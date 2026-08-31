@@ -2,10 +2,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'advanced_features.dart';
+import 'draggable_shop_shortcuts.dart';
 import 'marketplace_features.dart';
 import 'production_features.dart';
 import 'restored_home.dart';
-import 'shop_qr_confirm_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,7 +49,7 @@ class App extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: yellow),
       ),
-      builder: (context, child) => ShopScannerShortcut(
+      builder: (context, child) => DraggableShopShortcuts(
         navigatorKey: appNavigatorKey,
         child: child ?? const SizedBox.shrink(),
       ),
