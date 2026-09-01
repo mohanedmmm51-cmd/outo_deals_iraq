@@ -42,7 +42,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
 
   Future<void> _loadProfile() async {
     try {
-      final value = await ShopStore.load();
+      final value = await ShopStore.loadForAuthenticatedOwner();
       if (!mounted) return;
       setState(() {
         profile = value;
@@ -218,19 +218,31 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                 children: [
                   _shopHeader(shop),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.all(16),
-                    ),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ShopQrConfirmPage(shop: shop),
+                  if (shop.approved)
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.all(16),
+                      ),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ShopQrConfirmPage(shop: shop),
+                        ),
+                      ),
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('مسح طلب الزبون'),
+                    )
+                  else
+                    const Card(
+                      color: Color(0xffffe4a3),
+                      child: ListTile(
+                        leading: Icon(Icons.hourglass_top),
+                        title: Text('الحساب بانتظار موافقة الإدارة'),
+                        subtitle: Text(
+                          'تتفعّل الطلبات ومسح الأكواد بعد اعتماد المحل.',
+                        ),
                       ),
                     ),
-                    icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('مسح طلب الزبون'),
-                  ),
                   const SizedBox(height: 12),
                   _liveSizeRequestsCard(),
                   const SizedBox(height: 12),
@@ -326,6 +338,14 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             Text(shop.phone, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 4),
             Text('رقم المحل: ${shop.id}', style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+            Chip(
+              avatar: Icon(
+                shop.approved ? Icons.verified : Icons.schedule,
+                size: 18,
+              ),
+              label: Text(shop.approved ? 'محل معتمد' : 'بانتظار الاعتماد'),
+            ),
           ],
         ),
       ),
