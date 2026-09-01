@@ -92,8 +92,9 @@ class _ScannerShortcut extends StatelessWidget {
       elevation: 6,
       color: Theme.of(context).colorScheme.primaryContainer,
       shape: const CircleBorder(),
-      child: Tooltip(
-        message: 'مسح طلب',
+      child: Semantics(
+        label: 'مسح طلب',
+        button: true,
         child: InkWell(
           onTap: onTap,
           customBorder: const CircleBorder(),
@@ -127,8 +128,9 @@ class _RoundShortcut extends StatelessWidget {
       elevation: 6,
       shape: const CircleBorder(),
       color: Theme.of(context).colorScheme.primaryContainer,
-      child: Tooltip(
-        message: tooltip,
+      child: Semantics(
+        label: tooltip,
+        button: true,
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
