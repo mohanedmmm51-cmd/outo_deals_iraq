@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'customer_cart.dart';
-import 'legacy_main.dart' as legacy;
+import 'app_core.dart' as legacy;
 import 'order_system.dart';
 
 String _money(int n) => n.toString().replaceAllMapped(
