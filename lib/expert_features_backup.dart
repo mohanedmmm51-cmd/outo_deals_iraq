@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'legacy_main.dart' as legacy;
 
-void main() => runApp(const App());
-
 const yellow = Color(0xFFFFD400);
 
 String money(int n) => n.toString().replaceAllMapped(
