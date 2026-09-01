@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'shop_qr_confirm_page.dart';
 import 'shop_store.dart';
 import 'size_request_page.dart';
 
@@ -216,6 +217,20 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   _shopHeader(shop),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                    ),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ShopQrConfirmPage(shop: shop),
+                      ),
+                    ),
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('مسح طلب الزبون'),
+                  ),
                   const SizedBox(height: 12),
                   _liveSizeRequestsCard(),
                   const SizedBox(height: 12),

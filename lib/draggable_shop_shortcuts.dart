@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'marketplace_features.dart';
-import 'shop_qr_confirm_page.dart';
-import 'shop_store.dart';
 
 class DraggableShopShortcuts extends StatefulWidget {
   final Widget child;
@@ -20,31 +18,9 @@ class DraggableShopShortcuts extends StatefulWidget {
 }
 
 class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
-  ShopProfile? shop;
-
   static const double _shortcutSize = 50;
   static const double _shortcutRight = 16;
   static const double _nearbyBottom = 140;
-  static const double _scannerBottom = 202;
-
-  @override
-  void initState() {
-    super.initState();
-    ShopStore.ownerSessionVersion.addListener(_loadShop);
-    _loadShop();
-  }
-
-  @override
-  void dispose() {
-    ShopStore.ownerSessionVersion.removeListener(_loadShop);
-    super.dispose();
-  }
-
-  Future<void> _loadShop() async {
-    final value = await ShopStore.loadForAuthenticatedOwner();
-    if (!mounted) return;
-    setState(() => shop = value);
-  }
 
   void _push(Widget page) {
     widget.navigatorKey.currentState?.push(
@@ -68,43 +44,7 @@ class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
             onTap: () => _push(const OnlineNearbyShopsPage()),
           ),
         ),
-        if (shop != null)
-          Positioned(
-            right: _shortcutRight,
-            bottom: _scannerBottom,
-            child: _ScannerShortcut(
-              onTap: () => _push(ShopQrConfirmPage(shop: shop!)),
-            ),
-          ),
       ],
-    );
-  }
-}
-
-class _ScannerShortcut extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _ScannerShortcut({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      elevation: 6,
-      color: Theme.of(context).colorScheme.primaryContainer,
-      shape: const CircleBorder(),
-      child: Semantics(
-        label: 'مسح طلب',
-        button: true,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: const SizedBox(
-            width: _DraggableShopShortcutsState._shortcutSize,
-            height: _DraggableShopShortcutsState._shortcutSize,
-            child: Icon(Icons.qr_code_scanner),
-          ),
-        ),
-      ),
     );
   }
 }
