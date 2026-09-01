@@ -71,20 +71,42 @@ class _ShopAuthPageState extends State<ShopAuthPage> {
     });
     try {
       if (register) {
-        final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email.text.trim(),
-          password: password.text,
-        );
-        final profile = await ShopStore.save(
+        UserCredential cred;
+        try {
+          cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+            email: email.text.trim(),
+            password: password.text,
+          );
+        } on FirebaseAuthException catch (e) {
+          if (e.code != 'email-already-in-use') rethrow;
+          cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: email.text.trim(),
+            password: password.text,
+          );
+        }
+
+        final userRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(cred.user!.uid);
+        final existingUser = await userRef.get();
+        final existingShopId = '${existingUser.data()?['shopId'] ?? ''}'.trim();
+        final shopId = existingShopId.isEmpty
+            ? ShopStore.createShopId()
+            : existingShopId;
+
+        await userRef.set({
+          'role': 'shop',
+          'shopId': shopId,
+          'email': email.text.trim(),
+          if (!existingUser.exists) 'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        await ShopStore.save(
           name: shopName.text.trim(),
           phone: phone.text.trim(),
+          shopId: shopId,
         );
-        await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).set({
-          'role': 'shop',
-          'shopId': profile.id,
-          'email': email.text.trim(),
-          'createdAt': FieldValue.serverTimestamp(),
-        });
       } else {
         final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email.text.trim(),

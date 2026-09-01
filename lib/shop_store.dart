@@ -70,6 +70,11 @@ class ShopStore {
     ownerSessionVersion.value++;
   }
 
+  static String createShopId() {
+    final stamp = DateTime.now().microsecondsSinceEpoch.toString();
+    return 'SHOP-${stamp.substring(stamp.length - 10)}';
+  }
+
   static Future<ShopProfile?> load() async {
     final prefs = await SharedPreferences.getInstance();
     final id = prefs.getString(_shopIdKey)?.trim() ?? '';
@@ -135,6 +140,7 @@ class ShopStore {
   static Future<ShopProfile> save({
     required String name,
     required String phone,
+    String? shopId,
   }) async {
     final cleanName = name.trim();
     final cleanPhone = phone.trim();
@@ -143,10 +149,9 @@ class ShopStore {
 
     final position = await _requiredPosition();
     final prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString(_shopIdKey)?.trim() ?? '';
+    var id = shopId?.trim() ?? prefs.getString(_shopIdKey)?.trim() ?? '';
     if (id.isEmpty) {
-      final stamp = DateTime.now().millisecondsSinceEpoch.toString();
-      id = 'SHOP-${stamp.substring(stamp.length - 8)}';
+      id = createShopId();
     }
 
     final docRef = FirebaseFirestore.instance.collection('shops').doc(id);
