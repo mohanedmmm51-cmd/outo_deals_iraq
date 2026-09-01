@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'order_system.dart';
 import 'shop_qr_confirm_page.dart';
 import 'shop_store.dart';
 import 'size_request_page.dart';
@@ -219,18 +220,37 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                   _shopHeader(shop),
                   const SizedBox(height: 12),
                   if (shop.approved)
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.all(16),
-                      ),
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ShopQrConfirmPage(shop: shop),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.all(16),
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ShopQrConfirmPage(shop: shop),
+                            ),
+                          ),
+                          icon: const Icon(Icons.qr_code_scanner),
+                          label: const Text('مسح طلب الزبون'),
                         ),
-                      ),
-                      icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('مسح طلب الزبون'),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.all(16),
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ShopConfirmOrderPage(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.keyboard),
+                          label: const Text('إدخال كود الطلب يدوياً'),
+                        ),
+                      ],
                     )
                   else
                     const Card(
