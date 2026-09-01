@@ -101,6 +101,7 @@ class _ShopAuthPageState extends State<ShopAuthPage> {
           await ShopStore.cacheFromRemote(shopId);
         }
       }
+      ShopStore.notifyOwnerSessionChanged();
       await NotificationService.init();
       if (!mounted) return;
       Navigator.pushReplacement(

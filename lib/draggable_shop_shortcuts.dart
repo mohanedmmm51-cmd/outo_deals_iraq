@@ -32,11 +32,18 @@ class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
   @override
   void initState() {
     super.initState();
+    ShopStore.ownerSessionVersion.addListener(_loadShop);
     _loadShop();
   }
 
+  @override
+  void dispose() {
+    ShopStore.ownerSessionVersion.removeListener(_loadShop);
+    super.dispose();
+  }
+
   Future<void> _loadShop() async {
-    final value = await ShopStore.load();
+    final value = await ShopStore.loadForAuthenticatedOwner();
     if (!mounted) return;
     setState(() => shop = value);
   }

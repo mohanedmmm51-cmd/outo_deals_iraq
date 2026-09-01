@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -63,6 +64,12 @@ class ShopProfile {
 }
 
 class ShopStore {
+  static final ValueNotifier<int> ownerSessionVersion = ValueNotifier<int>(0);
+
+  static void notifyOwnerSessionChanged() {
+    ownerSessionVersion.value++;
+  }
+
   static Future<ShopProfile?> load() async {
     final prefs = await SharedPreferences.getInstance();
     final id = prefs.getString(_shopIdKey)?.trim() ?? '';
@@ -77,6 +84,27 @@ class ShopStore {
       longitude: prefs.getDouble(_shopLngKey),
       approved: prefs.getBool(_shopApprovedKey) ?? false,
     );
+  }
+
+  static Future<ShopProfile?> loadForAuthenticatedOwner() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final userData = userDoc.data();
+      if (userData == null || userData['role'] != 'shop') return null;
+
+      final shopId = '${userData['shopId'] ?? ''}'.trim();
+      if (shopId.isEmpty) return null;
+
+      return cacheFromRemote(shopId);
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<Position> _requiredPosition() async {
