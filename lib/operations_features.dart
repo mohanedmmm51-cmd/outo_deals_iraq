@@ -10,6 +10,11 @@ import 'package:share_plus/share_plus.dart';
 
 import 'shop_store.dart';
 
+part 'operations/order_actions.dart';
+part 'operations/order_management.dart';
+part 'operations/business_management.dart';
+part 'operations/risk_and_audit.dart';
+
 const operationsYellow = Color(0xFFFFD400);
 
 String opMoney(int n) => n.toString().replaceAllMapped(
@@ -39,8 +44,3 @@ String orderStatusLabel(String status) {
       return 'جديد';
   }
 }
-
-part 'operations/order_actions.dart';
-part 'operations/order_management.dart';
-part 'operations/business_management.dart';
-part 'operations/risk_and_audit.dart';

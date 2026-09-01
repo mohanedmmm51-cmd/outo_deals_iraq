@@ -9,6 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'shop_store.dart';
 
+part 'advanced/advanced_hub.dart';
+part 'advanced/customer_services.dart';
+part 'advanced/shop_tools.dart';
+
 const advancedYellow = Color(0xFFFFD400);
 
 String advMoney(int n) => n.toString().replaceAllMapped(
@@ -54,7 +58,3 @@ class LocalCustomerStore {
     return code;
   }
 }
-
-part 'advanced/advanced_hub.dart';
-part 'advanced/customer_services.dart';
-part 'advanced/shop_tools.dart';
