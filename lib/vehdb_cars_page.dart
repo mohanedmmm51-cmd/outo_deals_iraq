@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import 'legacy_main.dart' as legacy;
+import 'app_core.dart' as legacy;
 
 const _yellow = Color(0xFFFFD400);
 
