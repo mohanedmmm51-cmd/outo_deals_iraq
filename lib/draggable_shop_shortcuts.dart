@@ -21,13 +21,11 @@ class DraggableShopShortcuts extends StatefulWidget {
 
 class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
   ShopProfile? shop;
-  Offset? scannerPosition;
 
-  static const double _scannerWidth = 50;
-  static const double _scannerHeight = 50;
-  static const double _nearbySize = 50;
-  static const double _edge = 12;
-  static const double _bottomNavigationClearance = 132;
+  static const double _shortcutSize = 50;
+  static const double _shortcutRight = 16;
+  static const double _nearbyBottom = 140;
+  static const double _scannerBottom = 202;
 
   @override
   void initState() {
@@ -54,103 +52,30 @@ class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
     );
   }
 
-  double _clamp(double value, double min, double max) {
-    if (!value.isFinite || !min.isFinite || !max.isFinite) return min;
-    if (max < min) return min;
-    return value.clamp(min, max).toDouble();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
       children: [
         widget.child,
-        Positioned.fill(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (!constraints.hasBoundedWidth ||
-                  !constraints.hasBoundedHeight ||
-                  constraints.maxWidth <= 0 ||
-                  constraints.maxHeight <= 0) {
-                return const SizedBox.shrink();
-              }
-
-              final safe = MediaQuery.paddingOf(context);
-              final maxScannerX =
-                  constraints.maxWidth - _scannerWidth - _edge;
-              final minScannerY = safe.top + _edge;
-              final maxScannerY = constraints.maxHeight -
-                  safe.bottom -
-                  _scannerHeight -
-                  _edge;
-
-              final defaultScanner = Offset(
-                maxScannerX - 4,
-                _clamp(
-                  constraints.maxHeight -
-                      safe.bottom -
-                      _scannerHeight -
-                      _bottomNavigationClearance -
-                      _nearbySize -
-                      12,
-                  minScannerY,
-                  maxScannerY,
-                ),
-              );
-
-              final raw = scannerPosition ?? defaultScanner;
-              final scanner = Offset(
-                _clamp(raw.dx, _edge, maxScannerX),
-                _clamp(raw.dy, minScannerY, maxScannerY),
-              );
-
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    right: _edge + 4,
-                    bottom: safe.bottom + _bottomNavigationClearance,
-                    child: _RoundShortcut(
-                      size: _nearbySize,
-                      icon: Icons.near_me,
-                      tooltip: 'المحلات القريبة',
-                      onTap: () => _push(const OnlineNearbyShopsPage()),
-                    ),
-                  ),
-                  if (shop != null)
-                    Positioned(
-                      left: scanner.dx,
-                      top: scanner.dy,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onPanUpdate: (details) {
-                          final current = scannerPosition ?? defaultScanner;
-                          setState(() {
-                            scannerPosition = Offset(
-                              _clamp(
-                                current.dx + details.delta.dx,
-                                _edge,
-                                maxScannerX,
-                              ),
-                              _clamp(
-                                current.dy + details.delta.dy,
-                                minScannerY,
-                                maxScannerY,
-                              ),
-                            );
-                          });
-                        },
-                        child: _ScannerShortcut(
-                          onTap: () => _push(ShopQrConfirmPage(shop: shop!)),
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
+        Positioned(
+          right: _shortcutRight,
+          bottom: _nearbyBottom,
+          child: _RoundShortcut(
+            size: _shortcutSize,
+            icon: Icons.near_me,
+            tooltip: 'المحلات القريبة',
+            onTap: () => _push(const OnlineNearbyShopsPage()),
           ),
         ),
+        if (shop != null)
+          Positioned(
+            right: _shortcutRight,
+            bottom: _scannerBottom,
+            child: _ScannerShortcut(
+              onTap: () => _push(ShopQrConfirmPage(shop: shop!)),
+            ),
+          ),
       ],
     );
   }
@@ -173,8 +98,8 @@ class _ScannerShortcut extends StatelessWidget {
           onTap: onTap,
           customBorder: const CircleBorder(),
           child: const SizedBox(
-            width: _DraggableShopShortcutsState._scannerWidth,
-            height: _DraggableShopShortcutsState._scannerHeight,
+            width: _DraggableShopShortcutsState._shortcutSize,
+            height: _DraggableShopShortcutsState._shortcutSize,
             child: Icon(Icons.qr_code_scanner),
           ),
         ),
