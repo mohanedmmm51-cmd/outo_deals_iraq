@@ -165,8 +165,10 @@ class _VehDbApi {
 
   Future<List<String>> sizes(legacy.Car car) async {
     final out = <String>{};
+    final attemptedIds = <String>{};
 
     if (car.id.trim().isNotEmpty) {
+      attemptedIds.add(car.id.trim());
       try {
         final byCar = await get('/car-sizes/${Uri.encodeComponent(car.id)}');
         _collectSizes(byCar, out);
@@ -174,12 +176,22 @@ class _VehDbApi {
     }
 
     if (out.isEmpty) {
-      final direct = await get(
-        '/sizes?make=${Uri.encodeQueryComponent(car.make)}'
-        '&model=${Uri.encodeQueryComponent(car.model)}'
-        '&year=${car.year}',
-      );
-      _collectSizes(direct, out);
+      // Some VehDB car records do not have a matching tire-size record even
+      // though another trim for the same make/model/year does. The old
+      // /sizes fallback currently returns HTTP 422, so resolve the sibling
+      // car records and try their UUIDs instead.
+      final siblings = await cars(car.make, car.model, car.year);
+      for (final sibling in siblings) {
+        final id = sibling.id.trim();
+        if (id.isEmpty || !attemptedIds.add(id)) continue;
+
+        try {
+          final bySibling = await get('/car-sizes/${Uri.encodeComponent(id)}');
+          _collectSizes(bySibling, out);
+        } catch (_) {}
+
+        if (out.isNotEmpty) break;
+      }
     }
 
     return out.toList()..sort();
