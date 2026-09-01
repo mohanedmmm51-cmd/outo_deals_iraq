@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import 'legacy_main.dart' as legacy;
+import 'app_core.dart' as legacy;
 import 'shop_store.dart';
 
 const inventoryYellow = Color(0xFFFFD400);
