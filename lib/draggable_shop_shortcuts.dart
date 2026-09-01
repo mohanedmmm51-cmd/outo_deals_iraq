@@ -23,11 +23,11 @@ class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
   ShopProfile? shop;
   Offset? scannerPosition;
 
-  static const double _scannerWidth = 148;
-  static const double _scannerHeight = 54;
+  static const double _scannerWidth = 50;
+  static const double _scannerHeight = 50;
   static const double _nearbySize = 50;
   static const double _edge = 12;
-  static const double _bottomNavigationClearance = 84;
+  static const double _bottomNavigationClearance = 132;
 
   @override
   void initState() {
@@ -86,12 +86,14 @@ class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
                   _edge;
 
               final defaultScanner = Offset(
-                _edge,
+                maxScannerX - 4,
                 _clamp(
                   constraints.maxHeight -
                       safe.bottom -
                       _scannerHeight -
-                      90,
+                      _bottomNavigationClearance -
+                      _nearbySize -
+                      12,
                   minScannerY,
                   maxScannerY,
                 ),
@@ -164,23 +166,16 @@ class _ScannerShortcut extends StatelessWidget {
     return Material(
       elevation: 6,
       color: Theme.of(context).colorScheme.primaryContainer,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: const SizedBox(
-          width: _DraggableShopShortcutsState._scannerWidth,
-          height: _DraggableShopShortcutsState._scannerHeight,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.qr_code_scanner),
-              SizedBox(width: 8),
-              Text(
-                'مسح طلب',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
+      shape: const CircleBorder(),
+      child: Tooltip(
+        message: 'مسح طلب',
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: const SizedBox(
+            width: _DraggableShopShortcutsState._scannerWidth,
+            height: _DraggableShopShortcutsState._scannerHeight,
+            child: Icon(Icons.qr_code_scanner),
           ),
         ),
       ),
