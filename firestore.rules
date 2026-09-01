@@ -126,7 +126,14 @@ service cloud.firestore {
     }
 
     match /settlements/{id} {
-      allow read: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow get: if isAdmin() || (
+        isShop()
+        && (
+          id.matches(shopId() + '_.*')
+          || resource.data.shopId == shopId()
+        )
+      );
+      allow list: if isAdmin() || (isShop() && resource.data.shopId == shopId());
       allow create: if isShop() && request.resource.data.shopId == shopId();
       allow update, delete: if isAdmin();
     }
