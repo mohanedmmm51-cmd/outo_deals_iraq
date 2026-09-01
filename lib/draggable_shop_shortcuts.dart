@@ -25,8 +25,9 @@ class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
 
   static const double _scannerWidth = 148;
   static const double _scannerHeight = 54;
-  static const double _nearbySize = 54;
+  static const double _nearbySize = 50;
   static const double _edge = 12;
+  static const double _bottomNavigationClearance = 84;
 
   @override
   void initState() {
@@ -99,11 +100,12 @@ class _DraggableShopShortcutsState extends State<DraggableShopShortcuts> {
                 clipBehavior: Clip.none,
                 children: [
                   Positioned(
-                    right: _edge,
-                    bottom: safe.bottom + 18,
+                    right: _edge + 4,
+                    bottom: safe.bottom + _bottomNavigationClearance,
                     child: _RoundShortcut(
                       size: _nearbySize,
                       icon: Icons.near_me,
+                      tooltip: 'المحلات القريبة',
                       onTap: () => _push(const OnlineNearbyShopsPage()),
                     ),
                   ),
@@ -182,11 +184,13 @@ class _ScannerShortcut extends StatelessWidget {
 class _RoundShortcut extends StatelessWidget {
   final double size;
   final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
 
   const _RoundShortcut({
     required this.size,
     required this.icon,
+    required this.tooltip,
     required this.onTap,
   });
 
@@ -196,13 +200,16 @@ class _RoundShortcut extends StatelessWidget {
       elevation: 6,
       shape: const CircleBorder(),
       color: Theme.of(context).colorScheme.primaryContainer,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Icon(icon),
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Icon(icon),
+          ),
         ),
       ),
     );
