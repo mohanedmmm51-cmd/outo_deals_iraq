@@ -6,8 +6,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-void main() => runApp(const App());
-
 const yellow = Color(0xFFFFD400);
 const vehDbToken = String.fromEnvironment('VEHDB_TOKEN', defaultValue: '');
 
