@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:outo_deals_iraq/legacy_main.dart' as legacy;
+import 'package:outo_deals_iraq/app_core.dart' as legacy;
 
 void main() {
   group('Tire pricing rules', () {
