@@ -288,13 +288,12 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
   }
 
   Future<void> _restoreFromCloud() async {
-    final controller = TextEditingController();
+    var enteredCode = '';
     final code = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('استرجاع طلب من السحابة'),
         content: TextField(
-          controller: controller,
           autofocus: true,
           textCapitalization: TextCapitalization.characters,
           textDirection: TextDirection.ltr,
@@ -304,6 +303,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
             prefixIcon: Icon(Icons.cloud_download_outlined),
             border: OutlineInputBorder(),
           ),
+          onChanged: (value) => enteredCode = value,
           onSubmitted: (value) => Navigator.pop(context, value),
         ),
         actions: [
@@ -312,14 +312,12 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
             child: const Text('إلغاء'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
+            onPressed: () => Navigator.pop(context, enteredCode),
             child: const Text('استرجاع'),
           ),
         ],
       ),
     );
-    controller.dispose();
-
     final normalized = code?.trim().toUpperCase() ?? '';
     if (normalized.isEmpty || !mounted) return;
 
