@@ -9,7 +9,7 @@ if (file("google-services.json").exists()) {
 }
 
 android {
-    namespace = "com.example.auto_deals_iraq"
+    namespace = "iq.autodealsiraq.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -19,7 +19,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.auto_deals_iraq"
+        applicationId = "iq.autodealsiraq.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
