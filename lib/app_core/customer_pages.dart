@@ -149,29 +149,39 @@ class SupportPage extends StatelessWidget {
 
   static const supportPhone = String.fromEnvironment(
     'SUPPORT_PHONE',
-    defaultValue: '',
+    defaultValue: '07722617795',
   );
+  static const supportWhatsApp = '9647722617795';
+  static const supportMessage =
+      'السلام عليكم، أحتاج مساعدة في تطبيق Auto Deals Iraq';
 
-  Future<void> callSupport(BuildContext context) async {
-    if (supportPhone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'رقم الدعم بعده غير مضاف. نضيفه من تحدد رقم خدمة العملاء.',
-          ),
-        ),
-      );
-      return;
+  Future<void> _openSupportLink(
+    BuildContext context,
+    Uri uri,
+    String errorMessage,
+  ) async {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMessage)));
     }
+  }
 
-    final uri = Uri.parse('tel:$supportPhone');
+  Future<void> openWhatsApp(BuildContext context) async {
+    final uri = Uri.https('wa.me', '/$supportWhatsApp', {
+      'text': supportMessage,
+    });
+    await _openSupportLink(context, uri, 'تعذر فتح واتساب');
+  }
 
-    if (!await launchUrl(uri)) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('تعذر فتح الاتصال')));
-      }
-    }
+  Future<void> sendSms(BuildContext context) async {
+    final uri = Uri(
+      scheme: 'sms',
+      path: supportPhone,
+      queryParameters: {'body': supportMessage},
+    );
+    await _openSupportLink(context, uri, 'تعذر فتح تطبيق الرسائل');
   }
 
   @override
@@ -193,22 +203,28 @@ class SupportPage extends StatelessWidget {
             const SizedBox(height: 18),
             Card(
               child: ListTile(
-                leading: const Icon(Icons.phone),
-                title: const Text('اتصل بالدعم'),
-                subtitle: Text(
-                  supportPhone.isEmpty
-                      ? 'رقم الدعم نضيفه لاحقًا'
-                      : supportPhone,
-                ),
-                onTap: () => callSupport(context),
+                leading: const Icon(Icons.chat),
+                title: const Text('راسلنا على واتساب'),
+                subtitle: const Text(supportPhone),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: () => openWhatsApp(context),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.sms_outlined),
+                title: const Text('إرسال رسالة SMS'),
+                subtitle: const Text(supportPhone),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: () => sendSms(context),
               ),
             ),
             const Card(
               child: ListTile(
                 leading: Icon(Icons.info_outline),
-                title: Text('الدفع الإلكتروني وواتساب'),
+                title: Text('التواصل الكتابي فقط'),
                 subtitle: Text(
-                  'هذني مؤجلين للمرحلة الجاية وما داخلين بهذه النسخة.',
+                  'يفتح واتساب أو تطبيق الرسائل في جهازك بدون إجراء مكالمة.',
                 ),
               ),
             ),
