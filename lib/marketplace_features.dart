@@ -593,23 +593,62 @@ class NotificationCenterPage extends StatelessWidget {
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: FutureBuilder<ShopProfile?>(
-          future: ShopStore.load(),
+          future: ShopStore.loadForAuthenticatedOwner(),
           builder: (context, shopSnap) {
+            if (shopSnap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final shop = shopSnap.data;
+            if (shop == null) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'الإشعارات الخاصة بالطلبات تظهر بعد تسجيل دخول صاحب المحل.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('notifications').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('notifications')
+                  .where('targetShopId', isEqualTo: shop.id)
+                  .snapshots(),
               builder: (context, snap) {
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                final shopId = shopSnap.data?.id ?? '';
-                final docs = snap.data!.docs.where((d) {
-                  final target = '${d.data()['targetShopId'] ?? ''}';
-                  return target.isEmpty || target == shopId;
-                }).toList()..sort((a, b) => _asDate(b.data()['createdAt']).compareTo(_asDate(a.data()['createdAt'])));
+                if (snap.hasError) {
+                  return Center(
+                    child: Text('تعذر تحميل الإشعارات: ${snap.error}'),
+                  );
+                }
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final docs = snap.data!.docs.toList()
+                  ..sort(
+                    (a, b) => _asDate(b.data()['createdAt'])
+                        .compareTo(_asDate(a.data()['createdAt'])),
+                  );
                 if (docs.isEmpty) return const Center(child: Text('ماكو إشعارات'));
-                return ListView(padding: const EdgeInsets.all(16), children: docs.map((d) => Card(child: ListTile(
-                  leading: const Icon(Icons.notifications),
-                  title: Text('${d.data()['title'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('${d.data()['body'] ?? ''}'),
-                ))).toList());
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: docs
+                      .map(
+                        (d) => Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.notifications),
+                            title: Text(
+                              '${d.data()['title'] ?? ''}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text('${d.data()['body'] ?? ''}'),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                );
               },
             );
           },

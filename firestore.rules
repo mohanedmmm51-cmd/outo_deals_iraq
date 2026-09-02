@@ -55,6 +55,46 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.get('status', 'approved') != 'suspended';
     }
 
+    function shopOwnerCoreUnchanged() {
+      return request.resource.data.get('id', '') == resource.data.get('id', '')
+        && request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
+        && request.resource.data.get('approved', false) == resource.data.get('approved', false)
+        && request.resource.data.get('status', 'pending') == resource.data.get('status', 'pending')
+        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null);
+    }
+
+    function shopOwnerFieldsAllowed() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'name',
+        'phone',
+        'latitude',
+        'longitude',
+        'location',
+        'locationAccuracy',
+        'locationUpdatedAt',
+        'updatedAt',
+        'inventoryEnabled',
+        'availableCount',
+        'inventoryUpdatedAt'
+      ]);
+    }
+
+    function notificationMatchesOrder(id) {
+      return request.resource.data.orderCode is string
+        && request.resource.data.targetShopId is string
+        && id == request.resource.data.orderCode
+        && request.resource.data.keys().hasOnly([
+          'targetShopId',
+          'title',
+          'body',
+          'orderCode',
+          'createdAt'
+        ])
+        && request.resource.data.createdAt is timestamp
+        && get(/databases/$(database)/documents/orders/$(request.resource.data.orderCode)).data.shopId
+          == request.resource.data.targetShopId;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn() && request.auth.uid == uid && request.resource.data.role == 'shop';
@@ -74,8 +114,16 @@ service cloud.firestore {
 
     match /shops/{id} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.approved == false
+        && request.resource.data.status == 'pending';
+      allow update: if isAdmin() || (
+        signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && shopOwnerCoreUnchanged()
+        && shopOwnerFieldsAllowed()
+      );
       allow delete: if isAdmin();
       match /inventory/{itemId} {
         allow read: if true;
@@ -99,7 +147,7 @@ service cloud.firestore {
         && request.resource.data.expiresAt is timestamp
         && targetShopAvailable();
       allow get: if true;
-      allow list: if isAdmin() || isShop();
+      allow list: if isAdmin() || (isShop() && resource.data.shopId == shopId());
       allow update: if isAdmin()
         || (
           isShop()
@@ -159,7 +207,10 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
     match /notifications/{id} {
-      allow get, list, create: if true;
+      allow get, list: if isAdmin() || (
+        isShop() && resource.data.targetShopId == shopId()
+      );
+      allow create: if notificationMatchesOrder(id);
       allow update, delete: if isAdmin();
     }
     match /price_rules/{id} {
