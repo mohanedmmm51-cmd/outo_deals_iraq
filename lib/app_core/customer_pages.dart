@@ -149,7 +149,7 @@ class SupportPage extends StatelessWidget {
 
   static const supportPhone = String.fromEnvironment(
     'SUPPORT_PHONE',
-    defaultValue: '',
+    defaultValue: '07722617795',
   );
 
   Future<void> callSupport(BuildContext context) async {
