@@ -1,4 +1,4 @@
-package com.example.auto_deals_iraq
+package iq.autodealsiraq.app
 
 import io.flutter.embedding.android.FlutterActivity
 
