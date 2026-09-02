@@ -277,7 +277,7 @@ class OrderStore {
     await _saveLocal(local);
 
     try {
-      await db.collection('notifications').add({
+      await db.collection('notifications').doc(order.code).set({
         'targetShopId': shopId,
         'title': 'طلب جديد',
         'body': '$title • ${_money(price)} د.ع',
