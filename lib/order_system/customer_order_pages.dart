@@ -287,15 +287,106 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
     if (mounted) setState(() => orders = data);
   }
 
+  Future<void> _restoreFromCloud() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('استرجاع طلب من السحابة'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          textDirection: TextDirection.ltr,
+          decoration: const InputDecoration(
+            labelText: 'كود الطلب',
+            hintText: 'ADI-XXXXXXXXXX',
+            prefixIcon: Icon(Icons.cloud_download_outlined),
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('استرجاع'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    final normalized = code?.trim().toUpperCase() ?? '';
+    if (normalized.isEmpty || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('جاري البحث عن الطلب في السحابة...')),
+    );
+    final restored = await OrderStore.findByCode(normalized);
+    if (!mounted) return;
+    messenger.hideCurrentSnackBar();
+
+    if (restored == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('ما لكينا طلب بهذا الكود. تأكد من الكود والإنترنت.'),
+        ),
+      );
+      return;
+    }
+
+    await _load();
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text('تم استرجاع طلب ${restored.code} من السحابة')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('طلباتي')),
+    appBar: AppBar(
+      title: const Text('طلباتي'),
+      actions: [
+        IconButton(
+          onPressed: _restoreFromCloud,
+          tooltip: 'استرجاع طلب من السحابة',
+          icon: const Icon(Icons.cloud_download_outlined),
+        ),
+      ],
+    ),
     body: Directionality(
       textDirection: TextDirection.rtl,
       child: orders == null
           ? const Center(child: CircularProgressIndicator())
           : orders!.isEmpty
-          ? const Center(child: Text('ما عندك طلبات لحد الآن'))
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.cloud_done_outlined,
+                      size: 64,
+                      color: Colors.black45,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('ما عندك طلبات على هذا الجهاز'),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: _restoreFromCloud,
+                      icon: const Icon(Icons.cloud_download_outlined),
+                      label: const Text('استرجاع طلب بالكود'),
+                    ),
+                  ],
+                ),
+              ),
+            )
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView.separated(
