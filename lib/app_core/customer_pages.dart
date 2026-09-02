@@ -205,7 +205,6 @@ class SupportPage extends StatelessWidget {
               child: ListTile(
                 leading: const Icon(Icons.chat),
                 title: const Text('راسلنا على واتساب'),
-                subtitle: const Text(supportPhone),
                 trailing: const Icon(Icons.open_in_new),
                 onTap: () => openWhatsApp(context),
               ),
@@ -214,7 +213,6 @@ class SupportPage extends StatelessWidget {
               child: ListTile(
                 leading: const Icon(Icons.sms_outlined),
                 title: const Text('إرسال رسالة SMS'),
-                subtitle: const Text(supportPhone),
                 trailing: const Icon(Icons.open_in_new),
                 onTap: () => sendSms(context),
               ),
