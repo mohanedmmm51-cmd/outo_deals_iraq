@@ -9,6 +9,7 @@ on:
       - 'firestore.rules'
       - 'firebase.json'
       - 'functions/**'
+      - 'privacy_site/**'
       - '.github/workflows/firebase-deploy.yml'
   workflow_dispatch:
 
@@ -74,9 +75,9 @@ jobs:
         working-directory: functions
         run: npm install --omit=dev
 
-      - name: Deploy Firestore rules
+      - name: Deploy Firestore rules and Hosting
         if: steps.credentials.outputs.configured == 'true'
-        run: firebase deploy --only firestore:rules --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
+        run: firebase deploy --only firestore:rules,hosting --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
 
       - name: Detect Functions changes
         if: steps.credentials.outputs.configured == 'true' && github.event_name == 'push'

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'data_deletion.dart';
 import 'operations_features.dart';
 import 'shop_dashboard.dart';
 import 'shop_store.dart';
@@ -298,6 +299,28 @@ class AdminDashboardPage extends StatelessWidget {
                               '$waiting',
                               Icons.support_agent,
                               const AdminSupportInboxPage(),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                          stream: FirebaseFirestore.instance
+                              .collection('deletion_requests')
+                              .snapshots(),
+                          builder: (context, deletionSnap) {
+                            final pending = deletionSnap.data?.docs
+                                    .where(
+                                      (d) =>
+                                          d.data()['status'] == 'pending',
+                                    )
+                                    .length ??
+                                0;
+                            return _adminStat(
+                              context,
+                              'طلبات حذف البيانات',
+                              '$pending',
+                              Icons.delete_forever,
+                              const AdminDeletionRequestsPage(),
                             );
                           },
                         ),

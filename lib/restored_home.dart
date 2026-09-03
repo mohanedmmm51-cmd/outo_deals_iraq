@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'advanced_features.dart';
 import 'commerce_pages.dart' as commerce;
 import 'customer_cart.dart';
+import 'data_deletion.dart';
 import 'expert_features.dart' as expert;
 import 'app_core.dart' as legacy;
 import 'marketplace_features.dart';
 import 'order_system.dart';
+import 'privacy_policy.dart';
 import 'production_features.dart';
 import 'size_request_page.dart';
 import 'vehdb_cars_page.dart';
@@ -333,6 +335,17 @@ class _HomeDrawer extends StatelessWidget {
                 title: const Text('الدعم'),
                 onTap: () => _open(context, const legacy.SupportPage()),
               ),
+              ListTile(
+                leading: const Icon(Icons.privacy_tip_outlined),
+                title: const Text('سياسة الخصوصية'),
+                onTap: () => _open(context, const PrivacyPolicyPage()),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('حذف الحساب والبيانات'),
+                onTap: () =>
+                    _open(context, const DataDeletionRequestPage()),
+              ),
             ],
           ),
         ),
@@ -494,6 +507,19 @@ class CustomerAccountPage extends StatelessWidget {
               title: const Text('التواصل مع الدعم'),
               trailing: const Icon(Icons.arrow_back_ios_new, size: 16),
               onTap: () => _open(context, const legacy.SupportPage()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.privacy_tip_outlined),
+              title: const Text('سياسة الخصوصية'),
+              trailing: const Icon(Icons.arrow_back_ios_new, size: 16),
+              onTap: () => _open(context, const PrivacyPolicyPage()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('حذف الحساب والبيانات'),
+              trailing: const Icon(Icons.arrow_back_ios_new, size: 16),
+              onTap: () =>
+                  _open(context, const DataDeletionRequestPage()),
             ),
           ],
         ),

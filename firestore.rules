@@ -280,6 +280,44 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+    match /deletion_requests/{uid} {
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly([
+          'userUid',
+          'email',
+          'status',
+          'source',
+          'requestedAt',
+          'updatedAt'
+        ])
+        && request.resource.data.userUid == request.auth.uid
+        && request.resource.data.email == request.auth.token.get('email', '')
+        && request.resource.data.status == 'pending'
+        && request.resource.data.source in ['app', 'web']
+        && request.resource.data.requestedAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow get: if signedIn()
+        && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow update: if signedIn()
+          && request.auth.uid == uid
+          && resource.data.userUid == request.auth.uid
+          && request.resource.data.userUid == request.auth.uid
+          && request.resource.data.email == request.auth.token.get('email', '')
+          && request.resource.data.status == 'pending'
+          && request.resource.data.source in ['app', 'web']
+          && request.resource.data.requestedAt is timestamp
+          && request.resource.data.updatedAt is timestamp
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'email',
+            'status',
+            'source',
+            'requestedAt',
+            'updatedAt'
+          ]);
+      allow delete: if isAdmin();
+    }
     match /notifications/{id} {
       allow get, list: if isAdmin() || (
         isShop() && resource.data.targetShopId == shopId()
