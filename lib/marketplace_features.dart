@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'operations_features.dart';
 import 'shop_dashboard.dart';
 import 'shop_store.dart';
 
@@ -259,15 +260,21 @@ class AdminDashboardPage extends StatelessWidget {
                     final orders = ordersSnap.data?.docs ?? [];
                     final shops = shopsSnap.data?.docs ?? [];
                     final settlements = settleSnap.data?.docs ?? [];
-                    final completed = orders.where((d) => d.data()['completed'] == true).toList();
+                    final completed = orders
+                        .where(
+                          (d) =>
+                              d.data()['completed'] == true ||
+                              d.data()['status'] == 'completed',
+                        )
+                        .toList();
                     final pendingSettlements = settlements.where((d) => d.data()['status'] == 'pending').toList();
                     final due = pendingSettlements.fold<int>(0, (s, d) => s + ((d.data()['totalCommission'] as num?)?.toInt() ?? 0));
                     return ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
-                        Row(children: [Expanded(child: _adminStat('الطلبات', '${orders.length}', Icons.receipt_long)), const SizedBox(width: 8), Expanded(child: _adminStat('المنفذة', '${completed.length}', Icons.check_circle))]),
+                        Row(children: [Expanded(child: _adminStat(context, 'الطلبات', '${orders.length}', Icons.receipt_long, const OrdersManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'المنفذة', '${completed.length}', Icons.check_circle, const OrdersManagementPage(initialStatus: 'completed')))]),
                         const SizedBox(height: 8),
-                        Row(children: [Expanded(child: _adminStat('المحلات', '${shops.length}', Icons.store)), const SizedBox(width: 8), Expanded(child: _adminStat('عمولات معلقة', '${_money(due)} د.ع', Icons.account_balance_wallet))]),
+                        Row(children: [Expanded(child: _adminStat(context, 'المحلات', '${shops.length}', Icons.store, const AdminShopsManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'عمولات معلقة', '${_money(due)} د.ع', Icons.account_balance_wallet, const AdminPendingCommissionsPage()))]),
                         const SizedBox(height: 18),
                         const Text('طلبات انضمام المحلات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                         ...shops.where((d) => d.data()['approved'] != true).map((d) => Card(child: ListTile(
@@ -306,13 +313,206 @@ class AdminDashboardPage extends StatelessWidget {
     );
   }
 
-  Widget _adminStat(String title, String value, IconData icon) => Card(
+  Widget _adminStat(
+    BuildContext context,
+    String title,
+    String value,
+    IconData icon,
+    Widget page,
+  ) => Card(
         color: featureYellow,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(children: [Icon(icon, size: 34), const SizedBox(height: 6), Text(title), Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))]),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => page),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                Icon(icon, size: 34),
+                const SizedBox(height: 6),
+                Text(title),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Icon(Icons.arrow_back_ios_new, size: 14),
+              ],
+            ),
+          ),
         ),
       );
+}
+
+class AdminShopsManagementPage extends StatelessWidget {
+  const AdminShopsManagementPage({super.key});
+
+  Future<void> _setApproval(
+    DocumentSnapshot<Map<String, dynamic>> shop,
+    bool approved,
+  ) async {
+    await shop.reference.set({
+      'approved': approved,
+      'status': approved ? 'approved' : 'suspended',
+    }, SetOptions(merge: true));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('إدارة المحلات')),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('shops').snapshots(),
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Center(child: Text('تعذر تحميل المحلات: ${snap.error}'));
+            }
+            if (!snap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final shops = snap.data!.docs.toList()
+              ..sort(
+                (a, b) => _asDate(b.data()['createdAt'])
+                    .compareTo(_asDate(a.data()['createdAt'])),
+              );
+            if (shops.isEmpty) {
+              return const Center(child: Text('ماكو محلات مسجلة حالياً'));
+            }
+            return ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: shops.length,
+              itemBuilder: (context, index) {
+                final shop = shops[index];
+                final data = shop.data();
+                final approved = data['approved'] == true;
+                final suspended = data['status'] == 'suspended';
+                return Card(
+                  child: ListTile(
+                    leading: Icon(
+                      approved ? Icons.verified : Icons.pending,
+                      color: approved ? Colors.green : Colors.orange,
+                    ),
+                    title: Text(
+                      '${data['name'] ?? ''}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      '${data['phone'] ?? ''}\n'
+                      '${approved ? 'معتمد' : (suspended ? 'موقوف' : 'بانتظار الموافقة')}',
+                    ),
+                    isThreeLine: true,
+                    trailing: approved
+                        ? TextButton(
+                            onPressed: () => _setApproval(shop, false),
+                            child: const Text('إيقاف'),
+                          )
+                        : FilledButton(
+                            onPressed: () => _setApproval(shop, true),
+                            child: const Text('موافقة'),
+                          ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class AdminPendingCommissionsPage extends StatelessWidget {
+  const AdminPendingCommissionsPage({super.key});
+
+  Future<void> _markPaid(
+    DocumentSnapshot<Map<String, dynamic>> settlement,
+  ) async {
+    final data = settlement.data()!;
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(settlement.reference, {
+      'status': 'paid',
+      'paidAt': FieldValue.serverTimestamp(),
+    });
+    final codes =
+        (data['orderCodes'] as List?)?.map((code) => '$code').toList() ??
+            <String>[];
+    for (final code in codes) {
+      batch.update(
+        FirebaseFirestore.instance.collection('orders').doc(code),
+        {'settlementStatus': 'paid'},
+      );
+    }
+    await batch.commit();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('العمولات المعلّقة')),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('settlements')
+              .where('status', isEqualTo: 'pending')
+              .snapshots(),
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Center(child: Text('تعذر تحميل العمولات: ${snap.error}'));
+            }
+            if (!snap.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final settlements = snap.data!.docs.toList()
+              ..sort(
+                (a, b) => _asDate(b.data()['createdAt'])
+                    .compareTo(_asDate(a.data()['createdAt'])),
+              );
+            if (settlements.isEmpty) {
+              return const Center(child: Text('ماكو عمولات معلّقة حالياً'));
+            }
+            return ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: settlements.length,
+              itemBuilder: (context, index) {
+                final settlement = settlements[index];
+                final data = settlement.data();
+                final commission =
+                    (data['totalCommission'] as num?)?.toInt() ?? 0;
+                final orderCount = (data['orderCodes'] as List?)?.length ?? 0;
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.account_balance_wallet),
+                    title: Text(
+                      '${data['shopName'] ?? data['shopId'] ?? ''}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      'العمولة: ${_money(commission)} د.ع\n'
+                      'عدد الطلبات: $orderCount',
+                    ),
+                    isThreeLine: true,
+                    trailing: FilledButton(
+                      onPressed: () => _markPaid(settlement),
+                      child: const Text('تم الدفع'),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
 
 class OnlineOffersPage extends StatelessWidget {

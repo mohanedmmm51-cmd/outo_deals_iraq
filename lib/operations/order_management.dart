@@ -58,7 +58,10 @@ class ShopOrdersPage extends StatelessWidget {
 }
 
 class OrdersManagementPage extends StatefulWidget {
-  const OrdersManagementPage({super.key});
+  const OrdersManagementPage({super.key, this.initialStatus = 'all'});
+
+  final String initialStatus;
+
   @override
   State<OrdersManagementPage> createState() => _OrdersManagementPageState();
 }
@@ -69,14 +72,20 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
   DateTime? from;
   DateTime? to;
 
+  @override
+  void initState() {
+    super.initState();
+    status = widget.initialStatus;
+  }
+
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _filter(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) {
     final q = search.text.trim().toLowerCase();
     return docs.where((d) {
       final x = d.data();
-      var s = '${x['status'] ?? ''}';
-      if (s.isEmpty) s = x['completed'] == true ? 'completed' : 'new';
+      var s = x['completed'] == true ? 'completed' : '${x['status'] ?? ''}';
+      if (s.isEmpty) s = 'new';
       final date = opDate(x['createdAt']);
       if (status != 'all' && s != status) return false;
       if (from != null && date.isBefore(DateTime(from!.year, from!.month, from!.day))) return false;
@@ -111,8 +120,8 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
     String esc(dynamic value) => '"${'$value'.replaceAll('"', '""')}"';
     for (final d in docs) {
       final x = d.data();
-      var s = '${x['status'] ?? ''}';
-      if (s.isEmpty) s = x['completed'] == true ? 'completed' : 'new';
+      var s = x['completed'] == true ? 'completed' : '${x['status'] ?? ''}';
+      if (s.isEmpty) s = 'new';
       lines.add([
         esc(d.id),
         esc(x['title']),
@@ -147,8 +156,8 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
             headers: const ['Code', 'Shop', 'Status', 'Price', 'Commission'],
             data: docs.map((d) {
               final x = d.data();
-              var s = '${x['status'] ?? ''}';
-              if (s.isEmpty) s = x['completed'] == true ? 'completed' : 'new';
+              var s = x['completed'] == true ? 'completed' : '${x['status'] ?? ''}';
+              if (s.isEmpty) s = 'new';
               return [d.id, '${x['shopName'] ?? ''}', s, '${x['price'] ?? 0}', '${x['commission'] ?? 0}'];
             }).toList(),
           ),
@@ -226,8 +235,8 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
                 Text('النتائج: ${docs.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
                 ...docs.map((d) {
                   final x = d.data();
-                  var s = '${x['status'] ?? ''}';
-                  if (s.isEmpty) s = x['completed'] == true ? 'completed' : 'new';
+                  var s = x['completed'] == true ? 'completed' : '${x['status'] ?? ''}';
+                  if (s.isEmpty) s = 'new';
                   return Card(
                     child: ListTile(
                       title: Text('${x['title'] ?? ''}'),
