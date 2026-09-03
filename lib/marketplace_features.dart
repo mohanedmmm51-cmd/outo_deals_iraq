@@ -198,7 +198,8 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
         password: password.text,
       );
       final doc = await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).get();
-      if (doc.data()?['role'] != 'admin') {
+      final data = doc.data();
+      if (data?['role'] != 'admin' && data?['isAdmin'] != true) {
         await FirebaseAuth.instance.signOut();
         throw Exception('هذا الحساب مو حساب إدارة');
       }
