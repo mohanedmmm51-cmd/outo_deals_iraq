@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="طلب حذف حساب وبيانات Auto Deals Iraq">
+    <title>حذف الحساب والبيانات | Auto Deals Iraq</title>
+    <style>
+      :root { color-scheme: light; --yellow: #ffd400; --ink: #171717; --muted: #616771; --paper: #fff; --bg: #f4f5f7; --danger: #a12525; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font-family: Tahoma, Arial, sans-serif; line-height: 1.75; }
+      header { background: var(--ink); color: white; border-bottom: 7px solid var(--yellow); }
+      .hero, main, footer { width: min(720px, calc(100% - 32px)); margin: auto; }
+      .hero { padding: 38px 0 30px; }
+      h1 { margin: 0 0 6px; font-size: clamp(1.65rem, 5vw, 2.25rem); }
+      main { padding: 24px 0 38px; }
+      .card { background: var(--paper); border: 1px solid #e2e5e9; border-radius: 16px; padding: 20px; box-shadow: 0 3px 12px rgb(0 0 0 / 5%); }
+      .notice { background: #fff8d3; border-right: 5px solid var(--yellow); padding: 13px; margin-bottom: 18px; }
+      label { display: block; font-weight: 700; margin: 13px 0 5px; }
+      input { width: 100%; padding: 12px; border: 1px solid #aeb4bd; border-radius: 9px; font: inherit; direction: ltr; }
+      button { width: 100%; margin-top: 18px; padding: 12px; border: 0; border-radius: 9px; background: var(--yellow); color: #111; font: inherit; font-weight: 800; cursor: pointer; }
+      button:disabled { opacity: .55; cursor: wait; }
+      .small { color: var(--muted); font-size: .92rem; }
+      #status { min-height: 28px; margin-top: 14px; font-weight: 700; }
+      .error { color: var(--danger); }
+      .success { color: #176b2c; }
+      a { color: #2f4fa8; font-weight: 700; }
+      footer { color: var(--muted); text-align: center; padding-bottom: 30px; }
+    </style>
+    <script defer src="/__/firebase/8.10.1/firebase-app.js"></script>
+    <script defer src="/__/firebase/8.10.1/firebase-auth.js"></script>
+    <script defer src="/__/firebase/8.10.1/firebase-firestore.js"></script>
+    <script defer src="/__/firebase/init.js"></script>
+    <script defer src="/deletion/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <div class="hero">
+        <h1>حذف الحساب والبيانات</h1>
+        <p>Auto Deals Iraq</p>
+      </div>
+    </header>
+    <main>
+      <div class="card">
+        <div class="notice">هذه الصفحة مخصصة لحسابات أصحاب المحلات المسجلة بالبريد وكلمة المرور. للبيانات المحلية أو الحساب المجهول استخدم خيار «حذف الحساب والبيانات» داخل التطبيق.</div>
+        <p>بعد التحقق من الحساب، يُسجل طلب الحذف وتتم مراجعته وتنفيذه خلال 30 يوماً. يشمل الحذف الحساب والبيانات المرتبطة به، مع احتمال الاحتفاظ بسجلات محدودة للطلبات والعمولات والتسويات لمدة تصل إلى 5 سنوات إذا لزمت للمحاسبة أو منع الاحتيال أو الالتزام القانوني.</p>
+        <form id="deletion-form">
+          <label for="email">البريد المسجل في التطبيق</label>
+          <input id="email" name="email" type="email" autocomplete="username" required>
+          <label for="password">كلمة المرور</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required minlength="6">
+          <p class="small">تُرسل بيانات الدخول مباشرة إلى Firebase Authentication للتحقق فقط. لا تخزن هذه الصفحة كلمة المرور.</p>
+          <button id="submit" type="submit">تأكيد طلب الحذف</button>
+          <p id="status" role="status" aria-live="polite"></p>
+        </form>
+        <p class="small"><a href="/privacy">قراءة سياسة الخصوصية</a></p>
+      </div>
+    </main>
+    <footer>Auto Deals Iraq — طلب حذف الحساب والبيانات</footer>
+  </body>
+</html>
