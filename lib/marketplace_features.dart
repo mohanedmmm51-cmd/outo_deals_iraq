@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'operations_features.dart';
 import 'shop_dashboard.dart';
 import 'shop_store.dart';
+import 'support_system.dart';
 
 const featureYellow = Color(0xFFFFD400);
 
@@ -275,6 +276,31 @@ class AdminDashboardPage extends StatelessWidget {
                         Row(children: [Expanded(child: _adminStat(context, 'الطلبات', '${orders.length}', Icons.receipt_long, const OrdersManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'المنفذة', '${completed.length}', Icons.check_circle, const OrdersManagementPage(initialStatus: 'completed')))]),
                         const SizedBox(height: 8),
                         Row(children: [Expanded(child: _adminStat(context, 'المحلات', '${shops.length}', Icons.store, const AdminShopsManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'عمولات معلقة', '${_money(due)} د.ع', Icons.account_balance_wallet, const AdminPendingCommissionsPage()))]),
+                        const SizedBox(height: 8),
+                        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                          stream: FirebaseFirestore.instance
+                              .collection('support_threads')
+                              .snapshots(),
+                          builder: (context, supportSnap) {
+                            final waiting = supportSnap.data?.docs
+                                    .where(
+                                      (d) =>
+                                          d.data()['status'] != 'closed' &&
+                                          (d.data()['status'] == 'waiting' ||
+                                              d.data()['lastSender'] ==
+                                                  'user'),
+                                    )
+                                    .length ??
+                                0;
+                            return _adminStat(
+                              context,
+                              'رسائل الدعم الجديدة',
+                              '$waiting',
+                              Icons.support_agent,
+                              const AdminSupportInboxPage(),
+                            );
+                          },
+                        ),
                         const SizedBox(height: 18),
                         const Text('طلبات انضمام المحلات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                         ...shops.where((d) => d.data()['approved'] != true).map((d) => Card(child: ListTile(
