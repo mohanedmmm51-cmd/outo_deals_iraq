@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'app_features.dart';
 import 'data_deletion.dart';
 import 'operations_features.dart';
 import 'shop_dashboard.dart';
@@ -323,6 +324,14 @@ class AdminDashboardPage extends StatelessWidget {
                               const AdminDeletionRequestsPage(),
                             );
                           },
+                        ),
+                        const SizedBox(height: 8),
+                        _adminStat(
+                          context,
+                          'مميزات التطبيق',
+                          'إدارة',
+                          Icons.auto_awesome,
+                          const AdminAppFeaturesPage(),
                         ),
                         const SizedBox(height: 18),
                         const Text('طلبات انضمام المحلات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),

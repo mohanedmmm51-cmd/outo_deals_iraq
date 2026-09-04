@@ -333,6 +333,10 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
+    match /app_content/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
     match /audit_logs/{id} {
       allow read: if isAdmin();
       allow create: if signedIn();

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'advanced_features.dart';
+import 'app_features.dart';
 import 'commerce_pages.dart' as commerce;
 import 'customer_cart.dart';
 import 'data_deletion.dart';
@@ -173,12 +174,9 @@ class _RestoredHomeState extends State<RestoredHome> {
                         () => _open(const EnhancedSizeRequestPage()),
                       ),
                       const SizedBox(height: 14),
-                      RestoredHomeUi.button(
-                        Icons.location_on,
-                        'المحلات القريبة',
-                        'المسافة + الأقرب + الاتجاهات',
-                        Colors.white,
-                        () => _open(const OnlineNearbyShopsPage()),
+                      AppFeaturesSection(
+                        onNearbyShopsTap: () =>
+                            _open(const OnlineNearbyShopsPage()),
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
