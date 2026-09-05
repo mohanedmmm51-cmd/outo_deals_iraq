@@ -75,9 +75,9 @@ jobs:
         working-directory: functions
         run: npm install --omit=dev
 
-      - name: Deploy Firestore rules and Hosting
-        if: steps.credentials.outputs.configured == 'true'
-        run: firebase deploy --only firestore:rules,hosting --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
+      - name: Check Functions syntax
+        if: steps.credentials.outputs.configured == 'true' && hashFiles('functions/index.js') != ''
+        run: node --check functions/index.js
 
       - name: Detect Functions changes
         if: steps.credentials.outputs.configured == 'true' && github.event_name == 'push'
@@ -93,6 +93,12 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # عند تغيير الدوال ننشرها أولاً. بهذا ما تنقفل كتابة الطلبات
+      # من التطبيق قبل ما تكون خدمة orderApi الجديدة جاهزة.
       - name: Deploy Functions
         if: steps.credentials.outputs.configured == 'true' && (github.event_name == 'workflow_dispatch' || steps.functions_changed.outputs.changed == 'true')
         run: firebase deploy --only functions --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
+
+      - name: Deploy Firestore rules and Hosting
+        if: steps.credentials.outputs.configured == 'true'
+        run: firebase deploy --only firestore:rules,hosting --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
