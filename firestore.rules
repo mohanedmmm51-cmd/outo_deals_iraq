@@ -136,10 +136,37 @@ service cloud.firestore {
 
     function customerOwnsOrder() {
       return signedIn()
+        && resource.data.get('customerUid', '') != ''
+        && resource.data.get('customerUid', '') == request.auth.uid;
+    }
+
+    function canAccessOrderCode(code) {
+      return exists(/databases/$(database)/documents/orders/$(code))
         && (
-          resource.data.get('customerUid', '') == request.auth.uid
-          || resource.data.get('customerUid', '') == ''
+          isAdmin()
+          || (
+            signedIn()
+            && get(/databases/$(database)/documents/orders/$(code)).data.get('customerUid', '') == request.auth.uid
+          )
+          || (
+            isShop()
+            && get(/databases/$(database)/documents/orders/$(code)).data.shopId == shopId()
+          )
         );
+    }
+
+    function validOrderNote() {
+      return signedIn()
+        && request.resource.data.keys().hasOnly([
+          'text',
+          'actorUid',
+          'createdAt'
+        ])
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 1000
+        && request.resource.data.createdAt is timestamp;
     }
 
     function shopOrderFieldsAllowed() {
@@ -265,7 +292,10 @@ service cloud.firestore {
 
     match /orders/{code} {
       allow create: if validTrustedNewOrder(code);
-      allow get: if true;
+      allow get: if isAdmin()
+        || customerOwnsOrder()
+        || (isShop() && resource.data.shopId == shopId())
+        || (signedIn() && resource.data.get('customerUid', '') == '');
       allow list: if isAdmin() || (isShop() && resource.data.shopId == shopId());
       allow update: if isAdmin()
         || (
@@ -297,7 +327,8 @@ service cloud.firestore {
         );
       allow delete: if isAdmin();
       match /notes/{noteId} {
-        allow read, create: if true;
+        allow read: if canAccessOrderCode(code);
+        allow create: if canAccessOrderCode(code) && validOrderNote();
         allow update, delete: if isAdmin();
       }
     }
