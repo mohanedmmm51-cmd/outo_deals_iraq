@@ -631,7 +631,7 @@ service cloud.firestore {
     }
     match /audit_logs/{id} {
       allow read: if isAdmin();
-      allow create: if signedIn();
+      allow create: if isAdmin();
       allow update, delete: if false;
     }
 
