@@ -9,6 +9,11 @@ String _money(int n) => n.toString().replaceAllMapped(
   (m) => '${m[1]},',
 );
 
+String createOrderCode() {
+  final now = DateTime.now().microsecondsSinceEpoch.toString();
+  return 'ADI-${now.substring(now.length - 10)}';
+}
+
 class AppOrder {
   final String code;
   final String title;
@@ -78,6 +83,28 @@ class AppOrder {
     'status': status,
     'expiresAt': expiresAt?.toIso8601String(),
     'productId': productId,
+  };
+
+  Map<String, dynamic> toFirestore() => {
+    'code': code,
+    'title': title,
+    'detail': detail,
+    'price': price,
+    'commission': commission,
+    'createdAt': Timestamp.fromDate(createdAt),
+    'completed': completed,
+    'completedAt': completedAt == null
+        ? null
+        : Timestamp.fromDate(completedAt!),
+    'shopId': shopId,
+    'shopName': shopName,
+    'status': status,
+    'expiresAt': expiresAt == null ? null : Timestamp.fromDate(expiresAt!),
+    'productId': productId,
+    'priceLocked': true,
+    'priceLockedAt': FieldValue.serverTimestamp(),
+    'settlementId': '',
+    'settlementStatus': '',
   };
 
   factory AppOrder.fromJson(Map<String, dynamic> json) => AppOrder(
@@ -195,70 +222,75 @@ class OrderStore {
     required String shopName,
     String productId = '',
   }) async {
-    if (productId.trim().isEmpty) {
-      throw StateError('تعذر تحديد المنتج. ارجع للمنتج وأنشئ الطلب من جديد.');
-    }
-
-    final projectId = Firebase.app().options.projectId.trim();
-    if (projectId.isEmpty) {
-      throw StateError('خدمة الطلبات غير مهيأة حالياً');
-    }
-
-    final uri = Uri.https(
-      'europe-west1-$projectId.cloudfunctions.net',
-      'orderApi',
+    final now = DateTime.now();
+    final order = AppOrder(
+      code: createOrderCode(),
+      title: title,
+      detail: detail,
+      price: price,
+      commission: commission,
+      createdAt: now,
+      shopId: shopId,
+      shopName: shopName,
+      status: 'new',
+      expiresAt: now.add(const Duration(hours: 24)),
+      productId: productId,
     );
 
-    http.Response response;
-    try {
-      response = await http
-          .post(
-            uri,
-            headers: const {'Content-Type': 'application/json; charset=utf-8'},
-            body: jsonEncode({
-              'shopId': shopId,
-              'productId': productId,
-              'detail': detail,
-              'expectedPrice': price,
-            }),
-          )
-          .timeout(const Duration(seconds: 20));
-    } catch (_) {
-      throw StateError('تعذر الاتصال بخدمة الطلبات. تأكد من الإنترنت وحاول مرة ثانية.');
-    }
+    final db = FirebaseFirestore.instance;
+    final orderRef = _remote.doc(order.code);
+    final shopRef = db.collection('shops').doc(shopId);
 
-    Map<String, dynamic> payload = <String, dynamic>{};
-    try {
-      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decoded is Map) {
-        payload = Map<String, dynamic>.from(decoded);
+    await db.runTransaction((tx) async {
+      final shopSnap = await tx.get(shopRef);
+      final shopData = shopSnap.data();
+      if (!shopSnap.exists ||
+          shopData == null ||
+          shopData['approved'] != true) {
+        throw StateError('هذا المحل غير متاح للطلبات حالياً');
       }
-    } catch (_) {}
+      if (shopData['status'] == 'suspended') {
+        throw StateError('هذا المحل موقوف حالياً');
+      }
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final message = '${payload['error'] ?? 'تعذر إنشاء الطلب حالياً'}'.trim();
-      throw StateError(message.isEmpty ? 'تعذر إنشاء الطلب حالياً' : message);
-    }
+      if (productId.trim().isNotEmpty && shopData['inventoryEnabled'] == true) {
+        final inventoryRef = InventoryService.itemRef(shopId, productId);
+        final inventorySnap = await tx.get(inventoryRef);
+        final inventory = inventorySnap.data();
+        final quantity = (inventory?['quantity'] as num?)?.toInt() ?? 0;
+        if (!inventorySnap.exists ||
+            inventory?['available'] != true ||
+            quantity <= 0) {
+          throw StateError('هذا المنتج نفد من المحل. اختار محل ثاني');
+        }
+      }
 
-    final rawOrder = payload['order'];
-    if (rawOrder is! Map) {
-      throw StateError('وصل رد غير صالح من خدمة الطلبات');
-    }
-    final order = AppOrder.fromJson(Map<String, dynamic>.from(rawOrder));
-    if (order.code.isEmpty || order.price <= 0 || order.shopId != shopId) {
-      throw StateError('تعذر التحقق من الطلب المنشأ');
-    }
+      tx.set(orderRef, {
+        ...order.toFirestore(),
+        'inventoryCheckedAt': FieldValue.serverTimestamp(),
+      });
+    });
 
     final local = await _loadLocal();
     local.removeWhere((e) => e.code == order.code);
     local.insert(0, order);
     await _saveLocal(local);
 
+    try {
+      await db.collection('notifications').doc(order.code).set({
+        'targetShopId': shopId,
+        'title': 'طلب جديد',
+        'body': '$title • ${_money(price)} د.ع',
+        'orderCode': order.code,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
+
     await AuditLogService.record(
       action: 'order_created',
       targetType: 'order',
       targetId: order.code,
-      details: '${order.shopName} • سعر مثبت ${_money(order.price)} د.ع',
+      details: '$shopName • سعر مثبت ${_money(price)} د.ع',
     );
     return order;
   }
