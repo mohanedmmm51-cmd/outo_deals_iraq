@@ -16,8 +16,85 @@ service cloud.firestore {
       return status in ['completed', 'cancelled', 'expired'];
     }
 
+    function orderCatalog() {
+      return get(/databases/$(database)/documents/security_config/order_catalog).data.products;
+    }
+
+    function trustedProductExists() {
+      return request.resource.data.get('productId', '') is string
+        && request.resource.data.get('productId', '') != ''
+        && request.resource.data.get('productId', '') in orderCatalog();
+    }
+
+    function trustedProduct() {
+      return orderCatalog()[request.resource.data.productId];
+    }
+
+    function trustedVariantExists() {
+      return trustedProductExists()
+        && request.resource.data.get('detail', '') is string
+        && request.resource.data.get('detail', '') in trustedProduct().variants;
+    }
+
+    function trustedVariant() {
+      return trustedProduct().variants[request.resource.data.detail];
+    }
+
+    function remotePriceRuleUsable() {
+      return trustedVariantExists()
+        && trustedVariant().priceRuleId is string
+        && exists(/databases/$(database)/documents/price_rules/$(trustedVariant().priceRuleId))
+        && get(/databases/$(database)/documents/price_rules/$(trustedVariant().priceRuleId)).data.value is int
+        && get(/databases/$(database)/documents/price_rules/$(trustedVariant().priceRuleId)).data.value > 0;
+    }
+
+    function trustedPriceMatches() {
+      return trustedVariantExists()
+        && (
+          (remotePriceRuleUsable()
+            && request.resource.data.price
+              == get(/databases/$(database)/documents/price_rules/$(trustedVariant().priceRuleId)).data.value)
+          || (!remotePriceRuleUsable()
+            && request.resource.data.price == trustedVariant().fallbackPrice)
+        );
+    }
+
+    function targetShopAvailable() {
+      return request.resource.data.shopId is string
+        && exists(/databases/$(database)/documents/shops/$(request.resource.data.shopId))
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.approved == true
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.get('status', 'approved') != 'suspended';
+    }
+
+    function targetShopMatches() {
+      return targetShopAvailable()
+        && request.resource.data.shopName
+          == get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.name;
+    }
+
+    function validTrustedNewOrder(code) {
+      return trustedVariantExists()
+        && trustedPriceMatches()
+        && request.resource.data.code == code
+        && request.resource.data.title == trustedProduct().title
+        && request.resource.data.commission == trustedVariant().commission
+        && request.resource.data.priceLocked == true
+        && request.resource.data.status == 'new'
+        && request.resource.data.completed == false
+        && request.resource.data.get('completedAt', null) == null
+        && request.resource.data.get('settlementId', '') == ''
+        && request.resource.data.get('settlementStatus', '') == ''
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.get('priceLockedAt', request.resource.data.createdAt) is timestamp
+        && request.resource.data.get('inventoryCheckedAt', request.resource.data.createdAt) is timestamp
+        && request.resource.data.expiresAt > request.resource.data.createdAt
+        && targetShopMatches();
+    }
+
     function orderCoreUnchanged() {
-      return request.resource.data.price == resource.data.price
+      return request.resource.data.get('code', '') == resource.data.get('code', '')
+        && request.resource.data.price == resource.data.price
         && request.resource.data.commission == resource.data.commission
         && request.resource.data.title == resource.data.title
         && request.resource.data.detail == resource.data.detail
@@ -26,7 +103,9 @@ service cloud.firestore {
         && request.resource.data.shopName == resource.data.shopName
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.get('expiresAt', null) == resource.data.get('expiresAt', null)
-        && request.resource.data.get('priceLocked', false) == resource.data.get('priceLocked', false);
+        && request.resource.data.get('priceLocked', false) == resource.data.get('priceLocked', false)
+        && request.resource.data.get('priceLockedAt', null) == resource.data.get('priceLockedAt', null)
+        && request.resource.data.get('inventoryCheckedAt', null) == resource.data.get('inventoryCheckedAt', null);
     }
 
     function shopOrderFieldsAllowed() {
@@ -52,12 +131,6 @@ service cloud.firestore {
     function customerLifecycleSafe() {
       return resource.data.get('completed', false) != true
         && !terminalStatus(resource.data.get('status', 'new'));
-    }
-
-    function targetShopAvailable() {
-      return request.resource.data.shopId is string
-        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.approved == true
-        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.get('status', 'approved') != 'suspended';
     }
 
     function shopOwnerCoreUnchanged() {
@@ -157,16 +230,7 @@ service cloud.firestore {
     }
 
     match /orders/{code} {
-      allow create: if request.resource.data.price is int
-        && request.resource.data.price > 0
-        && request.resource.data.commission is int
-        && request.resource.data.commission >= 0
-        && request.resource.data.priceLocked == true
-        && request.resource.data.status == 'new'
-        && request.resource.data.completed == false
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.expiresAt is timestamp
-        && targetShopAvailable();
+      allow create: if validTrustedNewOrder(code);
       allow get: if true;
       allow list: if isAdmin() || (isShop() && resource.data.shopId == shopId());
       allow update: if isAdmin()
@@ -192,6 +256,10 @@ service cloud.firestore {
         allow read, create: if true;
         allow update, delete: if isAdmin();
       }
+    }
+
+    match /security_config/{document=**} {
+      allow read, write: if false;
     }
 
     match /settlements/{id} {
