@@ -107,6 +107,7 @@ class AppOrder {
     'status': status,
     'expiresAt': expiresAt == null ? null : Timestamp.fromDate(expiresAt!),
     'productId': productId,
+    'inventoryItemId': productId.trim().isEmpty ? '' : inventoryDocId(productId),
     'priceLocked': true,
     'priceLockedAt': FieldValue.serverTimestamp(),
     'settlementId': '',
