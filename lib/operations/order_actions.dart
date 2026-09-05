@@ -79,6 +79,81 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
     await SharePlus.instance.share(ShareParams(text: text));
   }
 
+  Future<void> _showSecureConfirmation() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('order_secrets')
+          .doc(widget.orderCode)
+          .get();
+      final secret = '${snap.data()?['secret'] ?? ''}'.trim();
+      if (!mounted) return;
+      if (secret.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('هذا طلب قديم وما بيه رمز تنفيذ آمن. أنشئ طلب جديد للتنفيذ.'),
+          ),
+        );
+        return;
+      }
+      final payload = '${widget.orderCode}|$secret';
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('تأكيد التنفيذ الآمن'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'خلي صاحب المحل يمسح هذا الـ QR وقت تنفيذ الطلب فقط.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 14),
+                BarcodeWidget(
+                  barcode: Barcode.qrCode(),
+                  data: payload,
+                  width: 210,
+                  height: 210,
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'رمز التأكيد اليدوي',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  secret,
+                  textDirection: TextDirection.ltr,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'لا تشارك رمز التأكيد قبل وصولك للمحل.',
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('تم'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تحميل رمز التنفيذ: $e')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     note.dispose();
@@ -136,6 +211,12 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                   label: const Text('مشاركة الطلب'),
                 ),
                 if (!terminal) ...[
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: _showSecureConfirmation,
+                    icon: const Icon(Icons.qr_code_2),
+                    label: const Text('عرض QR ورمز تأكيد التنفيذ'),
+                  ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: () => _setStatus('on_the_way'),
