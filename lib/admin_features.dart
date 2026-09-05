@@ -235,7 +235,8 @@ class _SettlementsTabState extends State<_SettlementsTab> {
       final ordersSnap = await db.collection('orders').where('completed', isEqualTo: true).get();
       final unassigned = ordersSnap.docs.where((d) {
         final x = d.data();
-        return '${x['settlementId'] ?? ''}'.isEmpty && (x['status'] == 'completed' || x['completed'] == true);
+        return '${x['settlementId'] ?? ''}'.isEmpty &&
+            (x['status'] == 'completed' || x['completed'] == true);
       }).toList();
 
       if (unassigned.isEmpty) {
@@ -265,62 +266,92 @@ class _SettlementsTabState extends State<_SettlementsTab> {
 
       for (final entry in grouped.entries) {
         final baseId = entry.key;
-        final orders = entry.value;
-        if (orders.isEmpty) continue;
+        final candidates = entry.value;
+        if (candidates.isEmpty) continue;
         final start = starts[baseId]!;
-        final baseRef = db.collection('settlements').doc(baseId);
-        final baseSnap = await baseRef.get();
-        final baseData = baseSnap.data();
 
-        DocumentReference<Map<String, dynamic>> statementRef = baseRef;
-        Map<String, dynamic>? existingData = baseData;
-        if (baseSnap.exists && '${baseData?['status'] ?? ''}' == 'paid') {
-          final lateId = '${baseId}_late_${DateTime.now().millisecondsSinceEpoch}';
-          statementRef = db.collection('settlements').doc(lateId);
-          existingData = null;
+        final attached = await db.runTransaction<int>((tx) async {
+          final baseRef = db.collection('settlements').doc(baseId);
+          final baseSnap = await tx.get(baseRef);
+          final baseData = baseSnap.data();
+
+          DocumentReference<Map<String, dynamic>> statementRef = baseRef;
+          Map<String, dynamic>? existingData = baseData;
+          if (baseSnap.exists && '${baseData?['status'] ?? ''}' == 'paid') {
+            final lateId = '${baseId}_late_${DateTime.now().microsecondsSinceEpoch}';
+            statementRef = db.collection('settlements').doc(lateId);
+            existingData = null;
+          }
+
+          final freshOrders = <DocumentSnapshot<Map<String, dynamic>>>[];
+          for (final candidate in candidates) {
+            final fresh = await tx.get(candidate.reference);
+            final data = fresh.data();
+            if (!fresh.exists || data == null) continue;
+            if (data['completed'] != true && data['status'] != 'completed') continue;
+            if ('${data['settlementId'] ?? ''}'.isNotEmpty) continue;
+            if ('${data['shopId'] ?? ''}' != '${candidates.first.data()['shopId'] ?? ''}') continue;
+            final completedAt = _asDate(data['completedAt']);
+            if (_settlementWeekKey(_settlementWeekStart(completedAt)) != _settlementWeekKey(start)) continue;
+            freshOrders.add(fresh);
+          }
+
+          if (freshOrders.isEmpty) return 0;
+
+          final oldCodes = (existingData?['orderCodes'] as List?)
+                  ?.map((e) => '$e')
+                  .toSet() ??
+              <String>{};
+          final newOrders = freshOrders.where((order) => !oldCodes.contains(order.id)).toList();
+          if (newOrders.isEmpty) return 0;
+
+          final newSales = newOrders.fold<int>(
+            0,
+            (sum, d) => sum + ((d.data()?['price'] as num?)?.toInt() ?? 0),
+          );
+          final newCommission = newOrders.fold<int>(
+            0,
+            (sum, d) => sum + ((d.data()?['commission'] as num?)?.toInt() ?? 0),
+          );
+          final mergedCodes = <String>{...oldCodes, ...newOrders.map((d) => d.id)}.toList();
+          final previousSales = (existingData?['totalSales'] as num?)?.toInt() ?? 0;
+          final previousCommission = (existingData?['totalCommission'] as num?)?.toInt() ?? 0;
+          final first = newOrders.first.data()!;
+          final shopName = '${first['shopName'] ?? first['shopId'] ?? ''}';
+          final shopId = '${first['shopId'] ?? ''}';
+
+          tx.set(
+            statementRef,
+            {
+              'id': statementRef.id,
+              'shopId': shopId,
+              'shopName': shopName,
+              'weekStart': Timestamp.fromDate(start),
+              'weekEnd': Timestamp.fromDate(start.add(const Duration(days: 7))),
+              'totalSales': previousSales + newSales,
+              'totalCommission': previousCommission + newCommission,
+              'orderCount': mergedCodes.length,
+              'orderCodes': mergedCodes,
+              'status': 'pending',
+              if (existingData == null) 'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              'paidAt': null,
+            },
+            SetOptions(merge: true),
+          );
+          for (final order in newOrders) {
+            tx.update(order.reference, {
+              'settlementId': statementRef.id,
+              'settlementStatus': 'pending',
+            });
+          }
+          return newOrders.length;
+        });
+
+        if (attached > 0) {
+          createdOrUpdated++;
+          attachedOrders += attached;
         }
-
-        final oldCodes = (existingData?['orderCodes'] as List?)?.map((e) => '$e').toSet() ?? <String>{};
-        final newOrders = orders.where((order) => !oldCodes.contains(order.id)).toList();
-        if (newOrders.isEmpty) continue;
-
-        final newSales = newOrders.fold<int>(0, (sum, d) => sum + ((d.data()['price'] as num?)?.toInt() ?? 0));
-        final newCommission = newOrders.fold<int>(0, (sum, d) => sum + ((d.data()['commission'] as num?)?.toInt() ?? 0));
-        final mergedCodes = <String>{...oldCodes, ...newOrders.map((d) => d.id)}.toList();
-        final previousSales = (existingData?['totalSales'] as num?)?.toInt() ?? 0;
-        final previousCommission = (existingData?['totalCommission'] as num?)?.toInt() ?? 0;
-        final shopName = '${newOrders.first.data()['shopName'] ?? newOrders.first.data()['shopId'] ?? ''}';
-        final shopId = '${newOrders.first.data()['shopId'] ?? ''}';
-
-        final batch = db.batch();
-        batch.set(
-          statementRef,
-          {
-            'id': statementRef.id,
-            'shopId': shopId,
-            'shopName': shopName,
-            'weekStart': Timestamp.fromDate(start),
-            'weekEnd': Timestamp.fromDate(start.add(const Duration(days: 7))),
-            'totalSales': previousSales + newSales,
-            'totalCommission': previousCommission + newCommission,
-            'orderCount': mergedCodes.length,
-            'orderCodes': mergedCodes,
-            'status': 'pending',
-            if (existingData == null) 'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-            'paidAt': null,
-          },
-          SetOptions(merge: true),
-        );
-        for (final order in newOrders) {
-          batch.update(order.reference, {
-            'settlementId': statementRef.id,
-            'settlementStatus': 'pending',
-          });
-        }
-        await batch.commit();
-        createdOrUpdated++;
-        attachedOrders += newOrders.length;
       }
 
       await AuditLogService.record(
@@ -332,7 +363,7 @@ class _SettlementsTabState extends State<_SettlementsTab> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تم تحديث $createdOrUpdated كشف وربط $attachedOrders طلب بشكل آمن')),
+          SnackBar(content: Text('تم تحديث $createdOrUpdated كشف وربط $attachedOrders طلب بشكل ذري وآمن')),
         );
       }
     } catch (e) {
@@ -347,15 +378,76 @@ class _SettlementsTabState extends State<_SettlementsTab> {
   }
 
   Future<void> _markPaid(DocumentSnapshot<Map<String, dynamic>> d) async {
-    final x = d.data()!;
-    final batch = FirebaseFirestore.instance.batch();
-    batch.update(d.reference, {'status': 'paid', 'paidAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp()});
-    final codes = (x['orderCodes'] as List?)?.map((e) => '$e').toList() ?? <String>[];
-    for (final code in codes) {
-      batch.update(FirebaseFirestore.instance.collection('orders').doc(code), {'settlementStatus': 'paid'});
-    }
-    await batch.commit();
-    await AuditLogService.record(action: 'settlement_paid', targetType: 'settlement', targetId: d.id, details: '${x['totalCommission'] ?? 0}');
+    final db = FirebaseFirestore.instance;
+    await db.runTransaction<void>((tx) async {
+      final freshStatement = await tx.get(d.reference);
+      final x = freshStatement.data();
+      if (!freshStatement.exists || x == null) {
+        throw StateError('كشف التسوية غير موجود');
+      }
+      if ('${x['status'] ?? ''}' == 'paid') return;
+      if ('${x['status'] ?? ''}' != 'pending') {
+        throw StateError('حالة كشف التسوية غير صالحة للدفع');
+      }
+
+      final codes = (x['orderCodes'] as List?)?.map((e) => '$e').toSet().toList() ?? <String>[];
+      if (codes.isEmpty) throw StateError('كشف التسوية ما بيه طلبات');
+      if (codes.length > 450) {
+        throw StateError('الكشف كبير جداً للدفع الذري. قسّمه إلى أكثر من كشف');
+      }
+
+      var verifiedSales = 0;
+      var verifiedCommission = 0;
+      final verifiedOrders = <DocumentReference<Map<String, dynamic>>>[];
+      for (final code in codes) {
+        final ref = db.collection('orders').doc(code);
+        final order = await tx.get(ref);
+        final data = order.data();
+        if (!order.exists || data == null) {
+          throw StateError('أحد طلبات الكشف غير موجود: $code');
+        }
+        if (data['completed'] != true && data['status'] != 'completed') {
+          throw StateError('الكشف يحتوي طلب غير منفذ: $code');
+        }
+        if ('${data['settlementId'] ?? ''}' != d.id) {
+          throw StateError('الطلب $code مو مربوط بهذا الكشف');
+        }
+        if ('${data['shopId'] ?? ''}' != '${x['shopId'] ?? ''}') {
+          throw StateError('الكشف يحتوي طلب تابع لمحل مختلف');
+        }
+        verifiedSales += (data['price'] as num?)?.toInt() ?? 0;
+        verifiedCommission += (data['commission'] as num?)?.toInt() ?? 0;
+        verifiedOrders.add(ref);
+      }
+
+      final storedSales = (x['totalSales'] as num?)?.toInt() ?? 0;
+      final storedCommission = (x['totalCommission'] as num?)?.toInt() ?? 0;
+      final storedCount = (x['orderCount'] as num?)?.toInt() ?? 0;
+      if (verifiedSales != storedSales ||
+          verifiedCommission != storedCommission ||
+          verifiedOrders.length != storedCount) {
+        throw StateError('مجموع الكشف ما يطابق الطلبات المنفذة. أعد إنشاء/تحديث الكشف أولاً');
+      }
+
+      tx.update(d.reference, {
+        'status': 'paid',
+        'paidAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'verifiedAt': FieldValue.serverTimestamp(),
+      });
+      for (final ref in verifiedOrders) {
+        tx.update(ref, {'settlementStatus': 'paid'});
+      }
+    });
+
+    final fresh = await d.reference.get();
+    final x = fresh.data() ?? <String, dynamic>{};
+    await AuditLogService.record(
+      action: 'settlement_paid',
+      targetType: 'settlement',
+      targetId: d.id,
+      details: '${x['totalCommission'] ?? 0}',
+    );
   }
 
   @override
@@ -370,7 +462,22 @@ class _SettlementsTabState extends State<_SettlementsTab> {
               title: Text('${x['shopName'] ?? x['shopId'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text('طلبات: ${x['orderCount'] ?? 0}\nالعمولة: ${_money((x['totalCommission'] as num?)?.toInt() ?? 0)} د.ع • ${pending ? 'بانتظار الدفع' : 'تم الدفع'}'),
               isThreeLine: true,
-              trailing: pending ? FilledButton(onPressed: () => _markPaid(d), child: const Text('تم الدفع')) : const Icon(Icons.done_all, color: Colors.green),
+              trailing: pending ? FilledButton(onPressed: () async {
+                try {
+                  await _markPaid(d);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('تم التحقق من الكشف وتسجيل الدفع')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('تعذر تسجيل الدفع: $e')),
+                    );
+                  }
+                }
+              }, child: const Text('تم الدفع')) : const Icon(Icons.done_all, color: Colors.green),
             ));
           }).toList();
           return ListView(
@@ -385,7 +492,7 @@ class _SettlementsTabState extends State<_SettlementsTab> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'الكشوف تنحسب من الطلبات المنفذة داخل حساب الإدارة حتى ما يگدر صاحب المحل يغيّر العمولة أو المجموع.',
+                'الكشوف محمية للإدارة فقط، وتنربط بالطلبات داخل Transaction حتى ما يتكرر نفس الطلب بكشفين. وقبل تسجيل الدفع ينراجع عدد الطلبات والمبيعات والعمولة من الطلبات المنفذة نفسها.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
