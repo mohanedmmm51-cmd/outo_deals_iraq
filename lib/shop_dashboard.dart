@@ -18,9 +18,6 @@ DateTime _weekStart(DateTime value) {
   return d.subtract(Duration(days: d.weekday - DateTime.monday));
 }
 
-String _weekKey(DateTime start) =>
-    '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
-
 class ShopDashboardPage extends StatefulWidget {
   const ShopDashboardPage({super.key});
 
@@ -185,9 +182,13 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             }
 
             final docs = snapshot.data!.docs;
-            final completed = docs.where((d) => d.data()['completed'] == true).toList();
-            completed.sort((a, b) =>
-                _asDate(b.data()['completedAt']).compareTo(_asDate(a.data()['completedAt'])));
+            final completed = docs
+                .where((d) => d.data()['completed'] == true)
+                .toList()
+              ..sort(
+                (a, b) => _asDate(b.data()['completedAt'])
+                    .compareTo(_asDate(a.data()['completedAt'])),
+              );
 
             final start = _weekStart(DateTime.now());
             final end = start.add(const Duration(days: 7));
@@ -204,13 +205,13 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
               0,
               (sum, d) => sum + ((d.data()['commission'] as num?)?.toInt() ?? 0),
             );
-            final unassigned = thisWeek
-                .where((d) => '${d.data()['settlementId'] ?? ''}'.isEmpty)
-                .toList();
-            final dueCommission = unassigned.fold<int>(
-              0,
-              (sum, d) => sum + ((d.data()['commission'] as num?)?.toInt() ?? 0),
-            );
+            final dueCommission = thisWeek
+                .where((d) => '${d.data()['settlementStatus'] ?? ''}' != 'paid')
+                .fold<int>(
+                  0,
+                  (sum, d) =>
+                      sum + ((d.data()['commission'] as num?)?.toInt() ?? 0),
+                );
 
             return RefreshIndicator(
               onRefresh: () async => setState(() {}),
@@ -293,20 +294,16 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                     highlight: true,
                   ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)),
-                    onPressed: unassigned.isEmpty
-                        ? null
-                        : () => _createWeeklyStatement(
-                              profile: shop,
-                              weekStart: start,
-                              orders: unassigned,
-                            ),
-                    icon: const Icon(Icons.summarize),
-                    label: Text(
-                      unassigned.isEmpty
-                          ? 'كشف هذا الأسبوع مضاف للتسوية'
-                          : 'إنشاء كشف التسوية الأسبوعية',
+                  const Card(
+                    child: ListTile(
+                      leading: Icon(Icons.verified_user),
+                      title: Text(
+                        'كشف التسوية محمي',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        'المحل يشوف العمولة فقط. إنشاء وتحديث كشف التسوية يتم من حساب الإدارة حتى ما يگدر أي محل يغيّر المجموع أو الطلبات.',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -357,7 +354,10 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             const SizedBox(height: 4),
             Text(shop.phone, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 4),
-            Text('رقم المحل: ${shop.id}', style: const TextStyle(color: Colors.white70)),
+            Text(
+              'رقم المحل: ${shop.id}',
+              style: const TextStyle(color: Colors.white70),
+            ),
             const SizedBox(height: 8),
             Chip(
               avatar: Icon(
@@ -406,7 +406,10 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
               children: [
                 if (count > 0)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black,
                       borderRadius: BorderRadius.circular(20),
@@ -454,7 +457,10 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             Text(
               value,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -463,12 +469,19 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
   }
 
   Widget _orderCard(Map<String, dynamic> data) {
-    final settled = '${data['settlementId'] ?? ''}'.isNotEmpty;
+    final settlementStatus = '${data['settlementStatus'] ?? ''}';
+    final paid = settlementStatus == 'paid';
+    final settlementLabel = paid
+        ? 'التسوية مدفوعة'
+        : settlementStatus == 'pending'
+            ? 'داخل كشف وبانتظار الدفع'
+            : 'بانتظار كشف الإدارة';
+
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: settled ? Colors.green : shopYellow,
-          child: Icon(settled ? Icons.done_all : Icons.check, color: Colors.black),
+          backgroundColor: paid ? Colors.green : shopYellow,
+          child: Icon(paid ? Icons.done_all : Icons.check, color: Colors.black),
         ),
         title: Text(
           '${data['title'] ?? ''}',
@@ -478,113 +491,17 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
           '${data['code'] ?? ''}\n'
           'السعر: ${_money((data['price'] as num?)?.toInt() ?? 0)} د.ع • '
           'العمولة: ${_money((data['commission'] as num?)?.toInt() ?? 0)} د.ع\n'
-          '${settled ? 'داخل كشف تسوية' : 'بانتظار كشف الأسبوع'}',
+          '$settlementLabel',
         ),
         isThreeLine: true,
       ),
     );
   }
 
-  Future<void> _createWeeklyStatement({
-    required ShopProfile profile,
-    required DateTime weekStart,
-    required List<QueryDocumentSnapshot<Map<String, dynamic>>> orders,
-  }) async {
-    final key = _weekKey(weekStart);
-    final settlementId = '${profile.id}_$key';
-    final db = FirebaseFirestore.instance;
-    final statementRef = db.collection('settlements').doc(settlementId);
-
-    try {
-      final existing = await statementRef.get();
-      final existingData = existing.data();
-      final existingStatus = '${existingData?['status'] ?? ''}';
-      if (existing.exists && existingStatus == 'paid') {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم تسديد كشف هذا الأسبوع ولا يمكن إضافة طلبات جديدة له'),
-          ),
-        );
-        return;
-      }
-
-      final oldCodes = (existingData?['orderCodes'] as List?)
-              ?.map((e) => '$e')
-              .toSet() ??
-          <String>{};
-      final newOrders = orders.where((order) => !oldCodes.contains(order.id)).toList();
-      if (newOrders.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('كل طلبات هذا الأسبوع مضافة للكشف بالفعل')),
-        );
-        return;
-      }
-
-      final newSales = newOrders.fold<int>(
-        0,
-        (sum, d) => sum + ((d.data()['price'] as num?)?.toInt() ?? 0),
-      );
-      final newCommission = newOrders.fold<int>(
-        0,
-        (sum, d) => sum + ((d.data()['commission'] as num?)?.toInt() ?? 0),
-      );
-      final mergedCodes = <String>{...oldCodes, ...newOrders.map((d) => d.id)}.toList();
-      final previousSales = (existingData?['totalSales'] as num?)?.toInt() ?? 0;
-      final previousCommission =
-          (existingData?['totalCommission'] as num?)?.toInt() ?? 0;
-
-      final batch = db.batch();
-      batch.set(
-        statementRef,
-        {
-          'id': settlementId,
-          'shopId': profile.id,
-          'shopName': profile.name,
-          'weekStart': Timestamp.fromDate(weekStart),
-          'weekEnd': Timestamp.fromDate(weekStart.add(const Duration(days: 7))),
-          'totalSales': previousSales + newSales,
-          'totalCommission': previousCommission + newCommission,
-          'orderCount': mergedCodes.length,
-          'orderCodes': mergedCodes,
-          'status': 'pending',
-          if (!existing.exists) 'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'paidAt': null,
-        },
-        SetOptions(merge: true),
-      );
-
-      for (final order in newOrders) {
-        batch.update(order.reference, {
-          'settlementId': settlementId,
-          'settlementStatus': 'pending',
-        });
-      }
-
-      await batch.commit();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            existing.exists
-                ? 'تم تحديث كشف الأسبوع وإضافة ${newOrders.length} طلب • ${_money(newCommission)} د.ع عمولة جديدة'
-                : 'تم إنشاء كشف الأسبوع: ${_money(newCommission)} د.ع عمولة مستحقة',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر إنشاء كشف التسوية: $e')),
-      );
-    }
-  }
-
   DateTime _asDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
-    return DateTime.tryParse('$value') ?? DateTime.fromMillisecondsSinceEpoch(0);
+    return DateTime.tryParse('$value') ??
+        DateTime.fromMillisecondsSinceEpoch(0);
   }
 }
