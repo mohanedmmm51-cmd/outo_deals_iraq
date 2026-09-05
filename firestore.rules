@@ -2,15 +2,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function hasUserDoc() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
     function isAdmin() {
-      return signedIn() && (
+      return hasUserDoc() && (
         userDoc().data.role == 'admin'
         || userDoc().data.get('isAdmin', false) == true
       );
     }
-    function isShop() { return signedIn() && userDoc().data.role == 'shop'; }
-    function shopId() { return userDoc().data.shopId; }
+    function shopId() {
+      return userDoc().data.get('shopId', '');
+    }
+    function ownsApprovedShop(id) {
+      return signedIn()
+        && id is string
+        && id != ''
+        && exists(/databases/$(database)/documents/shops/$(id))
+        && get(/databases/$(database)/documents/shops/$(id)).data.ownerUid == request.auth.uid
+        && get(/databases/$(database)/documents/shops/$(id)).data.approved == true
+        && get(/databases/$(database)/documents/shops/$(id)).data.get('status', 'approved') != 'suspended';
+    }
+    function isShop() {
+      return hasUserDoc()
+        && userDoc().data.role == 'shop'
+        && userDoc().data.get('shopId', '') is string
+        && ownsApprovedShop(userDoc().data.get('shopId', ''));
+    }
 
     function terminalStatus(status) {
       return status in ['completed', 'cancelled', 'expired'];
@@ -73,7 +95,10 @@ service cloud.firestore {
     }
 
     function validTrustedNewOrder(code) {
-      return trustedVariantExists()
+      return signedIn()
+        && request.resource.data.get('customerUid', '') is string
+        && request.resource.data.get('customerUid', '') == request.auth.uid
+        && trustedVariantExists()
         && trustedPriceMatches()
         && request.resource.data.code == code
         && request.resource.data.title == trustedProduct().title
@@ -94,6 +119,7 @@ service cloud.firestore {
 
     function orderCoreUnchanged() {
       return request.resource.data.get('code', '') == resource.data.get('code', '')
+        && request.resource.data.get('customerUid', '') == resource.data.get('customerUid', '')
         && request.resource.data.price == resource.data.price
         && request.resource.data.commission == resource.data.commission
         && request.resource.data.title == resource.data.title
@@ -106,6 +132,14 @@ service cloud.firestore {
         && request.resource.data.get('priceLocked', false) == resource.data.get('priceLocked', false)
         && request.resource.data.get('priceLockedAt', null) == resource.data.get('priceLockedAt', null)
         && request.resource.data.get('inventoryCheckedAt', null) == resource.data.get('inventoryCheckedAt', null);
+    }
+
+    function customerOwnsOrder() {
+      return signedIn()
+        && (
+          resource.data.get('customerUid', '') == request.auth.uid
+          || resource.data.get('customerUid', '') == ''
+        );
     }
 
     function shopOrderFieldsAllowed() {
@@ -242,7 +276,8 @@ service cloud.firestore {
           && shopLifecycleSafe()
         )
         || (
-          orderCoreUnchanged()
+          customerOwnsOrder()
+          && orderCoreUnchanged()
           && customerLifecycleSafe()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status',
@@ -250,6 +285,15 @@ service cloud.firestore {
             'cancelledAt'
           ])
           && request.resource.data.status in ['on_the_way','cancelled']
+        )
+        || (
+          customerOwnsOrder()
+          && orderCoreUnchanged()
+          && resource.data.get('status', 'new') == 'cancelled'
+          && request.resource.data.get('status', 'new') == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'cancelledAt'
+          ])
         );
       allow delete: if isAdmin();
       match /notes/{noteId} {
