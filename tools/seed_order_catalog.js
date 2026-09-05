@@ -34,6 +34,10 @@ function ruleId(category, key) {
   return `${category}_${key}`.replace(/[^A-Za-z0-9_-]/g, '_');
 }
 
+function inventoryItemId(productId) {
+  return Buffer.from(productId, 'utf8').toString('base64url');
+}
+
 function tireProfit(wholesale) {
   if (wholesale < 150000) return 10000;
   if (wholesale < 200000) return 12000;
@@ -54,6 +58,7 @@ function buildCatalog() {
     const commission = tireCommission(wholesale);
     products[productId] = {
       title: `إطار ${size}`,
+      inventoryItemId: inventoryItemId(productId),
       variants: {
         'سعر الزوج • شد وبلنص حسب العرض': {
           fallbackPrice: wholesale + tireProfit(wholesale) + commission,
@@ -68,6 +73,7 @@ function buildCatalog() {
     const productId = `battery-${brand}-${amp}`;
     products[productId] = {
       title: `${brand} ${amp}`,
+      inventoryItemId: inventoryItemId(productId),
       variants: {
         'مع تسليم البطارية القديمة': {
           fallbackPrice: wholesale + 3000,
@@ -89,7 +95,7 @@ function buildCatalog() {
 async function main() {
   const ref = db.collection('security_config').doc('order_catalog');
   await ref.set({
-    version: 1,
+    version: 2,
     products: buildCatalog(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
