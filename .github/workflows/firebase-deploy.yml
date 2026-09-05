@@ -9,6 +9,7 @@ on:
       - 'firestore.rules'
       - 'firebase.json'
       - 'functions/**'
+      - 'tools/**'
       - 'privacy_site/**'
       - '.github/workflows/firebase-deploy.yml'
   workflow_dispatch:
@@ -69,6 +70,15 @@ jobs:
           fi
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS_FILE" >> "$GITHUB_ENV"
           echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Install catalog seed dependencies
+        if: steps.credentials.outputs.configured == 'true' && hashFiles('tools/package.json') != ''
+        working-directory: tools
+        run: npm install --omit=dev
+
+      - name: Seed trusted order catalog
+        if: steps.credentials.outputs.configured == 'true' && hashFiles('tools/seed_order_catalog.js') != ''
+        run: node tools/seed_order_catalog.js
 
       - name: Install Functions dependencies
         if: steps.credentials.outputs.configured == 'true' && hashFiles('functions/package.json') != ''
