@@ -52,6 +52,13 @@ service cloud.firestore {
       return orderCatalog()[request.resource.data.productId];
     }
 
+    function trustedInventoryItemMatches() {
+      return trustedProductExists()
+        && trustedProduct().inventoryItemId is string
+        && trustedProduct().inventoryItemId != ''
+        && request.resource.data.get('inventoryItemId', '') == trustedProduct().inventoryItemId;
+    }
+
     function trustedVariantExists() {
       return trustedProductExists()
         && request.resource.data.get('detail', '') is string
@@ -99,6 +106,7 @@ service cloud.firestore {
         && request.resource.data.get('customerUid', '') is string
         && request.resource.data.get('customerUid', '') == request.auth.uid
         && trustedVariantExists()
+        && trustedInventoryItemMatches()
         && trustedPriceMatches()
         && request.resource.data.code == code
         && request.resource.data.title == trustedProduct().title
@@ -125,6 +133,7 @@ service cloud.firestore {
         && request.resource.data.title == resource.data.title
         && request.resource.data.detail == resource.data.detail
         && request.resource.data.get('productId', '') == resource.data.get('productId', '')
+        && request.resource.data.get('inventoryItemId', '') == resource.data.get('inventoryItemId', '')
         && request.resource.data.shopId == resource.data.shopId
         && request.resource.data.shopName == resource.data.shopName
         && request.resource.data.createdAt == resource.data.createdAt
@@ -169,6 +178,40 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp;
     }
 
+    function inventoryCompletionSafe(code) {
+      return get(/databases/$(database)/documents/shops/$(resource.data.shopId)).data.get('inventoryEnabled', false) != true
+        || resource.data.get('inventoryItemId', '') == ''
+        || (
+          exists(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId))
+          && get(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('productId', '') == resource.data.get('productId', '')
+          && get(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('quantity', 0) is int
+          && get(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('quantity', 0) > 0
+          && getAfter(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('productId', '') == resource.data.get('productId', '')
+          && getAfter(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('quantity', -1)
+            == get(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('quantity', 0) - 1
+          && (
+            (get(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('quantity', 0) == 1
+              && getAfter(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('available', true) == false)
+            ||
+            (get(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('quantity', 0) > 1
+              && getAfter(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('available', false) == true)
+          )
+          && getAfter(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('lastOrderCode', '') == code
+          && getAfter(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('lastSoldAt', null) == request.time
+          && getAfter(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data.get('updatedAt', null) == request.time
+          && getAfter(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data
+            .diff(get(/databases/$(database)/documents/shops/$(resource.data.shopId)/inventory/$(resource.data.inventoryItemId)).data)
+            .affectedKeys()
+            .hasOnly([
+              'quantity',
+              'available',
+              'lastOrderCode',
+              'lastSoldAt',
+              'updatedAt'
+            ])
+        );
+    }
+
     function validShopCompletion(code) {
       return resource.data.get('completed', false) == false
         && !terminalStatus(resource.data.get('status', 'new'))
@@ -186,6 +229,7 @@ service cloud.firestore {
         && request.resource.data.get('completedAt', null) == request.time
         && request.resource.data.get('statusUpdatedAt', null) == request.time
         && request.resource.data.get('inventoryConsumedAt', null) == request.time
+        && inventoryCompletionSafe(code)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
           'statusUpdatedAt',
