@@ -323,6 +323,54 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp;
     }
 
+    function validCustomerRating(orderCode) {
+      return signedIn()
+        && request.resource.data.keys().hasOnly([
+          'orderCode',
+          'shopId',
+          'shopName',
+          'stars',
+          'comment',
+          'createdAt'
+        ])
+        && request.resource.data.orderCode == orderCode
+        && exists(/databases/$(database)/documents/orders/$(orderCode))
+        && get(/databases/$(database)/documents/orders/$(orderCode)).data.get('customerUid', '') == request.auth.uid
+        && get(/databases/$(database)/documents/orders/$(orderCode)).data.get('completed', false) == true
+        && get(/databases/$(database)/documents/orders/$(orderCode)).data.get('status', '') == 'completed'
+        && request.resource.data.shopId == get(/databases/$(database)/documents/orders/$(orderCode)).data.get('shopId', '')
+        && request.resource.data.shopName == get(/databases/$(database)/documents/orders/$(orderCode)).data.get('shopName', '')
+        && request.resource.data.stars is int
+        && request.resource.data.stars >= 1
+        && request.resource.data.stars <= 5
+        && request.resource.data.comment is string
+        && request.resource.data.comment.size() <= 1000
+        && request.resource.data.createdAt == request.time;
+    }
+
+    function validCustomerComplaint() {
+      return signedIn()
+        && request.resource.data.keys().hasOnly([
+          'orderCode',
+          'shopId',
+          'shopName',
+          'text',
+          'status',
+          'createdAt'
+        ])
+        && request.resource.data.orderCode is string
+        && request.resource.data.orderCode != ''
+        && exists(/databases/$(database)/documents/orders/$(request.resource.data.orderCode))
+        && get(/databases/$(database)/documents/orders/$(request.resource.data.orderCode)).data.get('customerUid', '') == request.auth.uid
+        && request.resource.data.shopId == get(/databases/$(database)/documents/orders/$(request.resource.data.orderCode)).data.get('shopId', '')
+        && request.resource.data.shopName == get(/databases/$(database)/documents/orders/$(request.resource.data.orderCode)).data.get('shopName', '')
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdAt == request.time;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn()
@@ -467,12 +515,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     match /ratings/{orderCode} {
-      allow create, get: if true;
-      allow list: if true;
+      allow create: if validCustomerRating(orderCode);
+      allow read: if true;
       allow update, delete: if isAdmin();
     }
     match /complaints/{id} {
-      allow create: if true;
+      allow create: if validCustomerComplaint();
       allow read, update, delete: if isAdmin();
     }
     match /support_threads/{threadId} {
