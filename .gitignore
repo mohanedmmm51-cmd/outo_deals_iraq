@@ -43,6 +43,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Android production signing (never commit real keys or passwords)
+android/key.properties
+*.jks
+*.keystore
+
 # Widget Preview related
 .widget_preview/
 vehdb.json
