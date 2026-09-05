@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -17,6 +18,15 @@ Future<void> main() async {
   }
 
   if (Firebase.apps.isNotEmpty) {
+    try {
+      if (FirebaseAuth.instance.currentUser == null) {
+        await FirebaseAuth.instance.signInAnonymously();
+      }
+    } catch (e) {
+      // يبقى التطبيق شغال حتى لو Anonymous Auth بعده مو مفعّل من Firebase Console.
+      debugPrint('Anonymous customer auth skipped: $e');
+    }
+
     try {
       await NotificationService.init();
     } catch (e) {
