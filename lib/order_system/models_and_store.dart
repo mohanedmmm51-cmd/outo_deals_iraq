@@ -1,6 +1,7 @@
 part of '../order_system_impl.dart';
 
 const _ordersKey = 'auto_deals_orders_v1';
+const _orderSecretsKey = 'auto_deals_order_confirmation_secrets_v1';
 const _ordersCollection = 'orders';
 const orderYellow = Color(0xFFFFD400);
 
@@ -12,6 +13,11 @@ String _money(int n) => n.toString().replaceAllMapped(
 String createOrderCode() {
   final now = DateTime.now().microsecondsSinceEpoch.toString();
   return 'ADI-${now.substring(now.length - 10)}';
+}
+
+String _createOrderConfirmationSecret() {
+  final secure = Random.secure();
+  return List.generate(12, (_) => secure.nextInt(10)).join();
 }
 
 class AppOrder {
@@ -192,6 +198,53 @@ class OrderStore {
     );
   }
 
+  static Future<Map<String, String>> _loadLocalSecrets() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_orderSecretsKey);
+    if (raw == null || raw.trim().isEmpty) return <String, String>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return <String, String>{};
+      return decoded.map((key, value) => MapEntry('$key', '$value'));
+    } catch (_) {
+      return <String, String>{};
+    }
+  }
+
+  static Future<void> _saveLocalSecret(String code, String secret) async {
+    final prefs = await SharedPreferences.getInstance();
+    final secrets = await _loadLocalSecrets();
+    secrets[code.toUpperCase()] = secret;
+    await prefs.setString(_orderSecretsKey, jsonEncode(secrets));
+  }
+
+  static Future<String> confirmationSecretFor(String code) async {
+    final normalized = code.trim().toUpperCase();
+    if (normalized.isEmpty) return '';
+    final secrets = await _loadLocalSecrets();
+    final local = secrets[normalized] ?? '';
+    if (local.isNotEmpty) return local;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('order_secrets')
+          .doc(normalized)
+          .get();
+      final secret = '${doc.data()?['secret'] ?? ''}'.trim();
+      if (secret.isNotEmpty) {
+        await _saveLocalSecret(normalized, secret);
+        return secret;
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  static String securePayload(String code, String confirmationSecret) {
+    final normalizedCode = code.trim().toUpperCase();
+    final secret = confirmationSecret.trim();
+    return secret.isEmpty ? normalizedCode : '$normalizedCode|$secret';
+  }
+
   static Future<List<AppOrder>> load() async {
     final local = await _loadLocal();
     if (local.isEmpty) return local;
@@ -248,9 +301,11 @@ class OrderStore {
       expiresAt: now.add(const Duration(hours: 24)),
       productId: productId,
     );
+    final confirmationSecret = _createOrderConfirmationSecret();
 
     final db = FirebaseFirestore.instance;
     final orderRef = _remote.doc(order.code);
+    final secretRef = db.collection('order_secrets').doc(order.code);
     final shopRef = db.collection('shops').doc(shopId);
 
     await db.runTransaction((tx) async {
@@ -282,7 +337,17 @@ class OrderStore {
         'customerUid': customerUid,
         'inventoryCheckedAt': FieldValue.serverTimestamp(),
       });
+      tx.set(secretRef, {
+        'code': order.code,
+        'secret': confirmationSecret,
+        'customerUid': customerUid,
+        'shopId': shopId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(order.expiresAt!),
+      });
     });
+
+    await _saveLocalSecret(order.code, confirmationSecret);
 
     final local = await _loadLocal();
     local.removeWhere((e) => e.code == order.code);
@@ -330,100 +395,108 @@ class OrderStore {
     String code, {
     required String shopId,
     required String shopName,
+    required String confirmationSecret,
   }) async {
     final normalized = code.trim().toUpperCase();
     if (normalized.isEmpty) return null;
+    final cleanSecret = confirmationSecret.trim();
     final db = FirebaseFirestore.instance;
     final docRef = _remote.doc(normalized);
 
-    final result = await db.runTransaction<AppOrder?>((tx) async {
-      final snap = await tx.get(docRef);
-      if (!snap.exists || snap.data() == null) return null;
-      final current = AppOrder.fromFirestore(snap.data()!);
-      if (current.shopId.isNotEmpty && current.shopId != shopId) {
-        throw StateError('هذا الطلب مخصص لمحل آخر');
-      }
-      if (current.status == 'cancelled') throw StateError('هذا الطلب ملغي');
-      if (current.status == 'expired') {
-        throw StateError('انتهت صلاحية كود الطلب');
-      }
-      if (current.expiresAt != null &&
-          DateTime.now().isAfter(current.expiresAt!) &&
-          !current.completed) {
-        tx.update(docRef, {
-          'status': 'expired',
-          'statusUpdatedAt': FieldValue.serverTimestamp(),
-        });
-        throw StateError('انتهت صلاحية كود الطلب');
-      }
-      if (current.completed) {
-        throw StateError('هذا الطلب منفذ مسبقاً ولا يمكن تسجيله مرة ثانية');
-      }
-
-      final shopRef = db.collection('shops').doc(shopId);
-      final shopSnap = await tx.get(shopRef);
-      final shopData = shopSnap.data();
-      if (!shopSnap.exists ||
-          shopData == null ||
-          shopData['approved'] != true) {
-        throw StateError('حساب المحل غير معتمد');
-      }
-      if (shopData['status'] == 'suspended') {
-        throw StateError('حساب المحل موقوف');
-      }
-
-      if (current.productId.trim().isNotEmpty &&
-          shopData['inventoryEnabled'] == true) {
-        final inventoryRef = InventoryService.itemRef(
-          shopId,
-          current.productId,
-        );
-        final inventorySnap = await tx.get(inventoryRef);
-        final inventory = inventorySnap.data();
-        final quantity = (inventory?['quantity'] as num?)?.toInt() ?? 0;
-        if (!inventorySnap.exists ||
-            inventory?['available'] != true ||
-            quantity <= 0) {
-          throw StateError(
-            'المنتج صار نافد. لا يمكن تنفيذ الطلب أو تسجيل العمولة',
-          );
+    try {
+      final result = await db.runTransaction<AppOrder?>((tx) async {
+        final snap = await tx.get(docRef);
+        if (!snap.exists || snap.data() == null) return null;
+        final current = AppOrder.fromFirestore(snap.data()!);
+        if (current.shopId.isNotEmpty && current.shopId != shopId) {
+          throw StateError('هذا الطلب مخصص لمحل آخر');
         }
-        final newQuantity = quantity - 1;
-        tx.update(inventoryRef, {
-          'quantity': newQuantity,
-          'available': newQuantity > 0,
-          'lastSoldAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
+        if (current.status == 'cancelled') throw StateError('هذا الطلب ملغي');
+        if (current.status == 'expired') {
+          throw StateError('انتهت صلاحية كود الطلب');
+        }
+        if (current.expiresAt != null &&
+            DateTime.now().isAfter(current.expiresAt!) &&
+            !current.completed) {
+          throw StateError('انتهت صلاحية كود الطلب');
+        }
+        if (current.completed) {
+          throw StateError('هذا الطلب منفذ مسبقاً ولا يمكن تسجيله مرة ثانية');
+        }
 
-      final completedAt = DateTime.now();
-      tx.update(docRef, {
-        'completed': true,
-        'completedAt': Timestamp.fromDate(completedAt),
-        'status': 'completed',
-        'statusUpdatedAt': FieldValue.serverTimestamp(),
-        'settlementId': '',
-        'settlementStatus': '',
-        'inventoryConsumedAt': FieldValue.serverTimestamp(),
+        final shopRef = db.collection('shops').doc(shopId);
+        final shopSnap = await tx.get(shopRef);
+        final shopData = shopSnap.data();
+        if (!shopSnap.exists ||
+            shopData == null ||
+            shopData['approved'] != true) {
+          throw StateError('حساب المحل غير معتمد');
+        }
+        if (shopData['status'] == 'suspended') {
+          throw StateError('حساب المحل موقوف');
+        }
+
+        if (current.productId.trim().isNotEmpty &&
+            shopData['inventoryEnabled'] == true) {
+          final inventoryRef = InventoryService.itemRef(
+            shopId,
+            current.productId,
+          );
+          final inventorySnap = await tx.get(inventoryRef);
+          final inventory = inventorySnap.data();
+          final quantity = (inventory?['quantity'] as num?)?.toInt() ?? 0;
+          if (!inventorySnap.exists ||
+              inventory?['available'] != true ||
+              quantity <= 0) {
+            throw StateError(
+              'المنتج صار نافد. لا يمكن تنفيذ الطلب أو تسجيل العمولة',
+            );
+          }
+          final newQuantity = quantity - 1;
+          tx.update(inventoryRef, {
+            'quantity': newQuantity,
+            'available': newQuantity > 0,
+            'lastOrderCode': normalized,
+            'lastSoldAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        final completedAt = DateTime.now();
+        final completion = <String, dynamic>{
+          'completed': true,
+          'completedAt': FieldValue.serverTimestamp(),
+          'status': 'completed',
+          'statusUpdatedAt': FieldValue.serverTimestamp(),
+          'inventoryConsumedAt': FieldValue.serverTimestamp(),
+        };
+        if (cleanSecret.isNotEmpty) {
+          completion['confirmationProof'] = cleanSecret;
+        }
+        tx.update(docRef, completion);
+        return current.copyWith(
+          completed: true,
+          completedAt: completedAt,
+          status: 'completed',
+        );
       });
-      return current.copyWith(
-        completed: true,
-        completedAt: completedAt,
-        status: 'completed',
-      );
-    });
 
-    if (result != null) {
-      await _upsertLocal(result);
-      await AuditLogService.record(
-        action: 'order_completed',
-        targetType: 'order',
-        targetId: result.code,
-        details: '$shopName • ${_money(result.price)} د.ع',
-      );
+      if (result != null) {
+        await _upsertLocal(result);
+        await AuditLogService.record(
+          action: 'order_completed',
+          targetType: 'order',
+          targetId: result.code,
+          details: '$shopName • ${_money(result.price)} د.ع',
+        );
+      }
+      return result;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        throw StateError('رمز تأكيد التنفيذ غير صحيح أو الطلب غير مخول لهذا المحل');
+      }
+      rethrow;
     }
-    return result;
   }
 
   static Future<void> _upsertLocal(AppOrder order) async {
