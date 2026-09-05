@@ -176,8 +176,6 @@ service cloud.firestore {
         'acceptedAt',
         'completed',
         'completedAt',
-        'settlementId',
-        'settlementStatus',
         'inventoryConsumedAt'
       ]);
     }
@@ -346,8 +344,7 @@ service cloud.firestore {
         )
       );
       allow list: if isAdmin() || (isShop() && resource.data.shopId == shopId());
-      allow create: if isShop() && request.resource.data.shopId == shopId();
-      allow update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
     match /offers/{id} {
       allow read: if resource.data.approved == true || isAdmin() || (isShop() && resource.data.shopId == shopId());
