@@ -91,15 +91,19 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
 
   bool handling = false;
   AppOrder? order;
+  String confirmationSecret = '';
   String? message;
 
   Future<void> _detected(BarcodeCapture capture) async {
     if (handling || order != null) return;
     String? code;
+    String secret = '';
     for (final barcode in capture.barcodes) {
       final raw = barcode.rawValue?.trim().toUpperCase();
       if (raw != null && raw.startsWith('ADI-')) {
-        code = raw;
+        final parts = raw.split('|');
+        code = parts.first.trim();
+        if (parts.length > 1) secret = parts[1].trim();
         break;
       }
     }
@@ -134,7 +138,10 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
         await scanner.start();
         return;
       }
-      setState(() => order = found);
+      setState(() {
+        order = found;
+        confirmationSecret = secret;
+      });
     } catch (e) {
       if (mounted) {
         setState(() => message = e.toString());
@@ -157,6 +164,7 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
         current.code,
         shopId: widget.shop.id,
         shopName: widget.shop.name,
+        confirmationSecret: confirmationSecret,
       );
       if (!mounted) return;
       setState(() {
@@ -179,6 +187,7 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
   Future<void> _scanAnother() async {
     setState(() {
       order = null;
+      confirmationSecret = '';
       message = null;
     });
     await scanner.start();
@@ -291,6 +300,13 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
                 Text('الكود: ${o.code}'),
                 Text('السعر المثبت: ${o.price} د.ع'),
                 Text('العمولة: ${o.commission} د.ع'),
+                if (confirmationSecret.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Chip(
+                    avatar: Icon(Icons.verified_user),
+                    label: Text('رمز تنفيذ آمن موجود داخل QR'),
+                  ),
+                ],
               ],
             ),
           ),
