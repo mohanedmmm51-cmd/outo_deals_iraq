@@ -222,6 +222,18 @@ class OrderStore {
     required String shopName,
     String productId = '',
   }) async {
+    var customer = FirebaseAuth.instance.currentUser;
+    if (customer == null) {
+      try {
+        await FirebaseAuth.instance.signInAnonymously();
+        customer = FirebaseAuth.instance.currentUser;
+      } catch (_) {}
+    }
+    if (customer == null) {
+      throw StateError('تعذر تأمين هوية الزبون. تأكد من الإنترنت وحاول مرة ثانية');
+    }
+    final customerUid = customer.uid;
+
     final now = DateTime.now();
     final order = AppOrder(
       code: createOrderCode(),
@@ -267,6 +279,7 @@ class OrderStore {
 
       tx.set(orderRef, {
         ...order.toFirestore(),
+        'customerUid': customerUid,
         'inventoryCheckedAt': FieldValue.serverTimestamp(),
       });
     });
