@@ -11,6 +11,20 @@ String _money(int n) => n.toString().replaceAllMapped(
       (m) => '${m[1]},',
     );
 
+DateTime _settlementWeekStart(DateTime value) {
+  final d = DateTime(value.year, value.month, value.day);
+  return d.subtract(Duration(days: d.weekday - DateTime.monday));
+}
+
+String _settlementWeekKey(DateTime start) =>
+    '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+
+DateTime _asDate(dynamic value) {
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  return DateTime.tryParse('$value') ?? DateTime.fromMillisecondsSinceEpoch(0);
+}
+
 class AdminAccessPage extends StatefulWidget {
   const AdminAccessPage({super.key});
 
@@ -203,13 +217,139 @@ class _OffersTab extends StatelessWidget {
       );
 }
 
-class _SettlementsTab extends StatelessWidget {
+class _SettlementsTab extends StatefulWidget {
   const _SettlementsTab();
+
+  @override
+  State<_SettlementsTab> createState() => _SettlementsTabState();
+}
+
+class _SettlementsTabState extends State<_SettlementsTab> {
+  bool generating = false;
+
+  Future<void> _generateStatements() async {
+    if (generating) return;
+    setState(() => generating = true);
+    try {
+      final db = FirebaseFirestore.instance;
+      final ordersSnap = await db.collection('orders').where('completed', isEqualTo: true).get();
+      final unassigned = ordersSnap.docs.where((d) {
+        final x = d.data();
+        return '${x['settlementId'] ?? ''}'.isEmpty && (x['status'] == 'completed' || x['completed'] == true);
+      }).toList();
+
+      if (unassigned.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ماكو طلبات منفذة جديدة تحتاج كشف تسوية')),
+          );
+        }
+        return;
+      }
+
+      final grouped = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+      final starts = <String, DateTime>{};
+      for (final order in unassigned) {
+        final data = order.data();
+        final shopId = '${data['shopId'] ?? ''}';
+        if (shopId.isEmpty) continue;
+        final completedAt = _asDate(data['completedAt']);
+        final start = _settlementWeekStart(completedAt);
+        final baseId = '${shopId}_${_settlementWeekKey(start)}';
+        grouped.putIfAbsent(baseId, () => []).add(order);
+        starts[baseId] = start;
+      }
+
+      var createdOrUpdated = 0;
+      var attachedOrders = 0;
+
+      for (final entry in grouped.entries) {
+        final baseId = entry.key;
+        final orders = entry.value;
+        if (orders.isEmpty) continue;
+        final start = starts[baseId]!;
+        final baseRef = db.collection('settlements').doc(baseId);
+        final baseSnap = await baseRef.get();
+        final baseData = baseSnap.data();
+
+        DocumentReference<Map<String, dynamic>> statementRef = baseRef;
+        Map<String, dynamic>? existingData = baseData;
+        if (baseSnap.exists && '${baseData?['status'] ?? ''}' == 'paid') {
+          final lateId = '${baseId}_late_${DateTime.now().millisecondsSinceEpoch}';
+          statementRef = db.collection('settlements').doc(lateId);
+          existingData = null;
+        }
+
+        final oldCodes = (existingData?['orderCodes'] as List?)?.map((e) => '$e').toSet() ?? <String>{};
+        final newOrders = orders.where((order) => !oldCodes.contains(order.id)).toList();
+        if (newOrders.isEmpty) continue;
+
+        final newSales = newOrders.fold<int>(0, (sum, d) => sum + ((d.data()['price'] as num?)?.toInt() ?? 0));
+        final newCommission = newOrders.fold<int>(0, (sum, d) => sum + ((d.data()['commission'] as num?)?.toInt() ?? 0));
+        final mergedCodes = <String>{...oldCodes, ...newOrders.map((d) => d.id)}.toList();
+        final previousSales = (existingData?['totalSales'] as num?)?.toInt() ?? 0;
+        final previousCommission = (existingData?['totalCommission'] as num?)?.toInt() ?? 0;
+        final shopName = '${newOrders.first.data()['shopName'] ?? newOrders.first.data()['shopId'] ?? ''}';
+        final shopId = '${newOrders.first.data()['shopId'] ?? ''}';
+
+        final batch = db.batch();
+        batch.set(
+          statementRef,
+          {
+            'id': statementRef.id,
+            'shopId': shopId,
+            'shopName': shopName,
+            'weekStart': Timestamp.fromDate(start),
+            'weekEnd': Timestamp.fromDate(start.add(const Duration(days: 7))),
+            'totalSales': previousSales + newSales,
+            'totalCommission': previousCommission + newCommission,
+            'orderCount': mergedCodes.length,
+            'orderCodes': mergedCodes,
+            'status': 'pending',
+            if (existingData == null) 'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+            'paidAt': null,
+          },
+          SetOptions(merge: true),
+        );
+        for (final order in newOrders) {
+          batch.update(order.reference, {
+            'settlementId': statementRef.id,
+            'settlementStatus': 'pending',
+          });
+        }
+        await batch.commit();
+        createdOrUpdated++;
+        attachedOrders += newOrders.length;
+      }
+
+      await AuditLogService.record(
+        action: 'settlements_generated',
+        targetType: 'settlement',
+        targetId: 'weekly',
+        details: '$createdOrUpdated كشف • $attachedOrders طلب',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تم تحديث $createdOrUpdated كشف وربط $attachedOrders طلب بشكل آمن')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر إنشاء كشوف التسوية: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => generating = false);
+    }
+  }
 
   Future<void> _markPaid(DocumentSnapshot<Map<String, dynamic>> d) async {
     final x = d.data()!;
     final batch = FirebaseFirestore.instance.batch();
-    batch.update(d.reference, {'status': 'paid', 'paidAt': FieldValue.serverTimestamp()});
+    batch.update(d.reference, {'status': 'paid', 'paidAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp()});
     final codes = (x['orderCodes'] as List?)?.map((e) => '$e').toList() ?? <String>[];
     for (final code in codes) {
       batch.update(FirebaseFirestore.instance.collection('orders').doc(code), {'settlementStatus': 'paid'});
@@ -223,7 +363,7 @@ class _SettlementsTab extends StatelessWidget {
         stream: FirebaseFirestore.instance.collection('settlements').snapshots(),
         builder: (context, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          return ListView(padding: const EdgeInsets.all(12), children: snap.data!.docs.map((d) {
+          final cards = snap.data!.docs.map((d) {
             final x = d.data();
             final pending = x['status'] == 'pending';
             return Card(child: ListTile(
@@ -232,7 +372,26 @@ class _SettlementsTab extends StatelessWidget {
               isThreeLine: true,
               trailing: pending ? FilledButton(onPressed: () => _markPaid(d), child: const Text('تم الدفع')) : const Icon(Icons.done_all, color: Colors.green),
             ));
-          }).toList());
+          }).toList();
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              FilledButton.icon(
+                onPressed: generating ? null : _generateStatements,
+                icon: generating
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.security),
+                label: Text(generating ? 'جاي أراجع الطلبات...' : 'إنشاء/تحديث كشوف التسوية من الطلبات المنفذة'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'الكشوف تنحسب من الطلبات المنفذة داخل حساب الإدارة حتى ما يگدر صاحب المحل يغيّر العمولة أو المجموع.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              ...cards,
+            ],
+          );
         },
       );
 }
