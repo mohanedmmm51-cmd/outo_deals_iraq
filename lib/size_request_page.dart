@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'shop_store.dart';
@@ -9,15 +10,16 @@ import 'shop_store.dart';
 const _sizeRequestYellow = Color(0xFFFFD400);
 
 String _sizeMoney(int value) => value.toString().replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
+  RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+  (m) => '${m[1]},',
+);
 
 class EnhancedSizeRequestPage extends StatefulWidget {
   const EnhancedSizeRequestPage({super.key});
 
   @override
-  State<EnhancedSizeRequestPage> createState() => _EnhancedSizeRequestPageState();
+  State<EnhancedSizeRequestPage> createState() =>
+      _EnhancedSizeRequestPageState();
 }
 
 class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
@@ -56,17 +58,24 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
       error = null;
     });
 
-    final code = _createRequestCode();
-
     try {
-      await FirebaseFirestore.instance.collection('size_requests').doc(code).set({
-        'requestCode': code,
-        'type': wantedType.isEmpty ? 'إطار' : wantedType,
-        'size': wantedSize,
-        'status': 'open',
-        'createdAt': FieldValue.serverTimestamp(),
-        'responses': <Map<String, dynamic>>[],
-      });
+      var user = FirebaseAuth.instance.currentUser;
+      user ??= (await FirebaseAuth.instance.signInAnonymously()).user;
+      if (user == null) throw StateError('تعذر تثبيت هوية الزبون');
+
+      final code = _createRequestCode();
+      await FirebaseFirestore.instance
+          .collection('size_requests')
+          .doc(code)
+          .set({
+            'requestCode': code,
+            'customerUid': user.uid,
+            'type': wantedType.isEmpty ? 'إطار' : wantedType,
+            'size': wantedSize,
+            'status': 'open',
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
 
       if (!mounted) return;
       setState(() {
@@ -77,7 +86,7 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
       if (!mounted) return;
       setState(() {
         busy = false;
-        error = 'تعذر إرسال الطلب للمحلات: $e';
+        error = 'تعذر إرسال الطلب للمحلات. تأكد من الإنترنت وحاول مجدداً.';
       });
     }
   }
@@ -122,18 +131,22 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
         const SizedBox(height: 22),
         TextField(
           controller: type,
+          maxLength: 50,
           decoration: const InputDecoration(
             labelText: 'النوع',
+            counterText: '',
             border: OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: size,
+          maxLength: 100,
           textDirection: TextDirection.ltr,
           decoration: const InputDecoration(
             labelText: 'القياس المطلوب',
             hintText: 'مثال: 205/55 R16',
+            counterText: '',
             border: OutlineInputBorder(),
           ),
         ),
@@ -249,7 +262,8 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
                   width: 300,
                   height: 92,
                   drawText: true,
-                  errorBuilder: (context, error) => const Text('تعذر إنشاء الباركود'),
+                  errorBuilder: (context, error) =>
+                      const Text('تعذر إنشاء الباركود'),
                 ),
               ],
             ),
@@ -261,25 +275,37 @@ class _EnhancedSizeRequestPageState extends State<EnhancedSizeRequestPage> {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('size_requests')
               .doc(code)
+              .collection('responses')
+              .orderBy('quotedAt')
               .snapshots(),
           builder: (context, snap) {
+            if (snap.hasError) {
+              return const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Text(
+                    'تعذر تحميل ردود المحلات حالياً.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
             if (!snap.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final responses = (snap.data!.data()?['responses'] as List?)
-                    ?.whereType<Map>()
-                    .map((e) => Map<String, dynamic>.from(e))
-                    .toList() ??
-                <Map<String, dynamic>>[];
+            final responses = snap.data!.docs
+                .map((document) => document.data())
+                .toList();
 
             responses.sort(
-              (a, b) => ((a['price'] as num?)?.toInt() ?? 0)
-                  .compareTo((b['price'] as num?)?.toInt() ?? 0),
+              (a, b) => ((a['price'] as num?)?.toInt() ?? 0).compareTo(
+                (b['price'] as num?)?.toInt() ?? 0,
+              ),
             );
 
             if (responses.isEmpty) {
@@ -401,10 +427,12 @@ class _QuoteDialogState extends State<_QuoteDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: noteController,
+              maxLength: 500,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _send(),
               decoration: const InputDecoration(
                 labelText: 'ملاحظة',
+                counterText: '',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -420,10 +448,7 @@ class _QuoteDialogState extends State<_QuoteDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('إلغاء'),
         ),
-        FilledButton(
-          onPressed: _send,
-          child: const Text('إرسال'),
-        ),
+        FilledButton(onPressed: _send, child: const Text('إرسال')),
       ],
     );
   }
@@ -440,8 +465,16 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
     if (!context.mounted) return;
 
     if (shop == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('سجل حساب المحل أولاً')));
+      return;
+    }
+
+    final currentShop = await ShopStore.cacheFromRemote(shop.id);
+    if (!context.mounted) return;
+    if (currentShop == null || !currentShop.approved) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('سجل حساب المحل أولاً')),
+        const SnackBar(content: Text('حساب المحل غير معتمد حالياً')),
       );
       return;
     }
@@ -455,49 +488,33 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
     if (!context.mounted || result == null) return;
 
     try {
-      final db = FirebaseFirestore.instance;
-      await db.runTransaction((transaction) async {
-        final snap = await transaction.get(ref);
-        final data = snap.data();
+      final snap = await ref.get();
+      final data = snap.data();
+      if (!snap.exists || data == null) {
+        throw StateError('طلب القياس غير موجود');
+      }
+      if (data['status'] != 'open') {
+        throw StateError('هذا الطلب مغلق وما يقبل عروض جديدة');
+      }
 
-        if (!snap.exists || data == null) {
-          throw StateError('طلب القياس غير موجود');
-        }
-        if (data['status'] != 'open') {
-          throw StateError('هذا الطلب مغلق وما يقبل عروض جديدة');
-        }
-
-        final responses = (data['responses'] as List?)
-                ?.whereType<Map>()
-                .map((e) => Map<String, dynamic>.from(e))
-                .where((e) => '${e['shopId'] ?? ''}' != shop.id)
-                .toList() ??
-            <Map<String, dynamic>>[];
-
-        responses.add({
-          'shopId': shop.id,
-          'shopName': shop.name,
-          'price': result.price,
-          'note': result.note,
-          'quotedAt': DateTime.now().toIso8601String(),
-        });
-
-        transaction.update(ref, {
-          'responses': responses,
-          'lastResponseAt': FieldValue.serverTimestamp(),
-        });
+      await ref.collection('responses').doc(currentShop.id).set({
+        'shopId': currentShop.id,
+        'shopName': currentShop.name,
+        'price': result.price,
+        'note': result.note,
+        'quotedAt': FieldValue.serverTimestamp(),
       });
 
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إرسال العرض للزبون')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('تم إرسال العرض للزبون')));
     } catch (e) {
       if (!context.mounted) return;
-      final message = e.toString().replaceFirst('Bad state: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر إرسال العرض: $message')),
-      );
+      final message = e is StateError
+          ? e.toString().replaceFirst('Bad state: ', '')
+          : 'تأكد من الإنترنت وحاول مجدداً';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('تعذر إرسال العرض: $message')));
     }
   }
 
@@ -533,8 +550,12 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
             docs.sort((a, b) {
               final aTime = a.data()['createdAt'];
               final bTime = b.data()['createdAt'];
-              final aMillis = aTime is Timestamp ? aTime.millisecondsSinceEpoch : 0;
-              final bMillis = bTime is Timestamp ? bTime.millisecondsSinceEpoch : 0;
+              final aMillis = aTime is Timestamp
+                  ? aTime.millisecondsSinceEpoch
+                  : 0;
+              final bMillis = bTime is Timestamp
+                  ? bTime.millisecondsSinceEpoch
+                  : 0;
               return bMillis.compareTo(aMillis);
             });
 
@@ -550,8 +571,6 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
               itemBuilder: (context, index) {
                 final doc = docs[index];
                 final data = doc.data();
-                final responses = (data['responses'] as List?)?.length ?? 0;
-
                 return Card(
                   key: ValueKey(doc.id),
                   child: ListTile(
@@ -563,11 +582,7 @@ class ShopSizeRequestsEnhancedPage extends StatelessWidget {
                       '${data['type'] ?? 'إطار'} ${data['size'] ?? ''}',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: Text(
-                      'كود: ${data['requestCode'] ?? doc.id}\n'
-                      'ردود المحلات: $responses',
-                    ),
-                    isThreeLine: true,
+                    subtitle: Text('كود: ${data['requestCode'] ?? doc.id}'),
                     trailing: FilledButton(
                       onPressed: () => _quote(context, doc.reference),
                       child: const Text('أرسل سعر'),

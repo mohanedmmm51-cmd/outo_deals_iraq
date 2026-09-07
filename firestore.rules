@@ -371,6 +371,60 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
+    function ownsSizeRequest(requestId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/size_requests/$(requestId))
+        && get(/databases/$(database)/documents/size_requests/$(requestId)).data.get('customerUid', '') == request.auth.uid;
+    }
+
+    function validNewSizeRequest(requestId) {
+      return signedIn()
+        && request.resource.data.keys().hasOnly([
+          'requestCode',
+          'customerUid',
+          'type',
+          'size',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.requestCode == requestId
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.type is string
+        && request.resource.data.type.size() > 0
+        && request.resource.data.type.size() <= 50
+        && request.resource.data.size is string
+        && request.resource.data.size.size() > 0
+        && request.resource.data.size.size() <= 100
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validShopSizeResponse(requestId, responseId) {
+      return isShop()
+        && responseId == shopId()
+        && exists(/databases/$(database)/documents/size_requests/$(requestId))
+        && get(/databases/$(database)/documents/size_requests/$(requestId)).data.get('status', '') == 'open'
+        && request.resource.data.keys().hasOnly([
+          'shopId',
+          'shopName',
+          'price',
+          'note',
+          'quotedAt'
+        ])
+        && request.resource.data.shopId == shopId()
+        && request.resource.data.shopName
+          == get(/databases/$(database)/documents/shops/$(shopId())).data.name
+        && request.resource.data.price is int
+        && request.resource.data.price > 0
+        && request.resource.data.price <= 100000000
+        && request.resource.data.note is string
+        && request.resource.data.note.size() > 0
+        && request.resource.data.note.size() <= 500
+        && request.resource.data.quotedAt == request.time;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn()
@@ -509,10 +563,20 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isShop() && resource.data.shopId == shopId());
     }
     match /size_requests/{id} {
-      allow create, get: if true;
+      allow create: if validNewSizeRequest(id);
+      allow get: if isAdmin() || isShop() || ownsSizeRequest(id);
       allow list: if isAdmin() || isShop();
-      allow update: if isAdmin() || isShop();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
+
+      match /responses/{responseId} {
+        allow get: if isAdmin()
+          || ownsSizeRequest(id)
+          || (isShop() && responseId == shopId());
+        allow list: if isAdmin() || ownsSizeRequest(id);
+        allow create, update: if validShopSizeResponse(id, responseId);
+        allow delete: if isAdmin() || (isShop() && responseId == shopId());
+      }
     }
     match /ratings/{orderCode} {
       allow create: if validCustomerRating(orderCode);
