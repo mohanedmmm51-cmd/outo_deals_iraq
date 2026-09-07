@@ -61,30 +61,12 @@ class _RewardsPageState extends State<RewardsPage> {
   @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('النقاط والمكافآت')),body:Center(child:Card(color:advancedYellow,child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.stars,size:70),const Text('رصيد النقاط'),Text('${points ?? 0}',style:const TextStyle(fontSize:32,fontWeight:FontWeight.bold)),const SizedBox(height:8),const Text('كل طلب منفذ يضيف نقاط. يمكن ربط الاستبدال بكوبونات لاحقاً.')])))));
 }
 
-class CouponsPage extends StatefulWidget { const CouponsPage({super.key}); @override State<CouponsPage> createState()=>_CouponsPageState(); }
-class _CouponsPageState extends State<CouponsPage> {
-  final code=TextEditingController(); String? result;
-  Future<void> _check() async { final d=await FirebaseFirestore.instance.collection('coupons').doc(code.text.trim().toUpperCase()).get(); if(mounted)setState(()=>result=d.exists && d.data()?['active']==true?'الكوبون فعال • الخصم ${d.data()?['discount'] ?? 0} د.ع':'الكوبون غير فعال'); }
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('كوبونات الخصم')),body:Padding(padding:const EdgeInsets.all(16),child:Column(children:[TextField(controller:code,textCapitalization:TextCapitalization.characters,decoration:const InputDecoration(labelText:'كود الخصم',border:OutlineInputBorder())),const SizedBox(height:8),FilledButton(onPressed:_check,child:const Text('فحص الكوبون')),if(result!=null)Padding(padding:const EdgeInsets.all(12),child:Text(result!,style:const TextStyle(fontWeight:FontWeight.bold))) ])));
-}
-
 class ReferralPage extends StatefulWidget { const ReferralPage({super.key}); @override State<ReferralPage> createState()=>_ReferralPageState(); }
 class _ReferralPageState extends State<ReferralPage> { String? code; @override void initState(){super.initState();LocalCustomerStore.referralCode().then((v){if(mounted)setState(()=>code=v);});} @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('برنامج الإحالة')),body:Center(child:Column(mainAxisSize:MainAxisSize.min,children:[const Text('كود الدعوة الخاص بهذا الجهاز'),const SizedBox(height:8),SelectableText(code??'...',style:const TextStyle(fontSize:30,fontWeight:FontWeight.bold)),const SizedBox(height:12),const Text('تُمنح المكافأة بعد أول طلب منفذ للشخص المدعو.')]))); }
 
 class DigitalInvoicesPage extends StatelessWidget {
   const DigitalInvoicesPage({super.key});
   @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('الفواتير الرقمية')),body:Directionality(textDirection:TextDirection.rtl,child:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('orders').where('completed',isEqualTo:true).limit(100).snapshots(),builder:(_,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());return ListView(padding:const EdgeInsets.all(12),children:s.data!.docs.map((d){final x=d.data();return Card(child:ListTile(leading:const Icon(Icons.receipt_long),title:Text('${x['title']??''}'),subtitle:Text('فاتورة ${d.id}\n${x['shopName']??''} • ${advMoney((x['price'] as num?)?.toInt()??0)} د.ع'),isThreeLine:true));}).toList());})));
-}
-
-class MediaGalleryPage extends StatefulWidget { const MediaGalleryPage({super.key}); @override State<MediaGalleryPage> createState()=>_MediaGalleryPageState(); }
-class _MediaGalleryPageState extends State<MediaGalleryPage> {
-  bool busy=false;
-  Future<void> _upload() async {
-    final file=await ImagePicker().pickImage(source:ImageSource.gallery,imageQuality:80); if(file==null)return;
-    setState(()=>busy=true);
-    try{final ref=FirebaseStorage.instance.ref('uploads/${DateTime.now().millisecondsSinceEpoch}_${file.name}'); await ref.putData(await file.readAsBytes()); final url=await ref.getDownloadURL(); await FirebaseFirestore.instance.collection('media').add({'url':url,'type':'general','createdAt':FieldValue.serverTimestamp()});}finally{if(mounted)setState(()=>busy=false);}
-  }
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('الصور')),floatingActionButton:FloatingActionButton(onPressed:busy?null:_upload,child:const Icon(Icons.add_a_photo)),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('media').orderBy('createdAt',descending:true).limit(100).snapshots(),builder:(_,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());return GridView.count(crossAxisCount:2,padding:const EdgeInsets.all(8),children:s.data!.docs.map((d)=>Card(clipBehavior:Clip.antiAlias,child:Image.network('${d.data()['url']??''}',fit:BoxFit.cover,errorBuilder:(_,__,___)=>const Icon(Icons.broken_image)))).toList());}));
 }
 
 class ProductFilterPage extends StatefulWidget { const ProductFilterPage({super.key}); @override State<ProductFilterPage> createState()=>_ProductFilterPageState(); }

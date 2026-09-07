@@ -371,6 +371,134 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
+    function validNewOffer() {
+      return isShop()
+        && request.resource.data.keys().hasOnly([
+          'title',
+          'description',
+          'shopId',
+          'shopName',
+          'approved',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.get('title', '') is string
+        && request.resource.data.get('title', '').size() > 0
+        && request.resource.data.get('title', '').size() <= 120
+        && request.resource.data.get('description', '') is string
+        && request.resource.data.get('description', '').size() > 0
+        && request.resource.data.get('description', '').size() <= 2000
+        && request.resource.data.get('shopId', '') == shopId()
+        && request.resource.data.get('shopName', '')
+          == get(/databases/$(database)/documents/shops/$(shopId())).data.name
+        && request.resource.data.get('approved', true) == false
+        && request.resource.data.get('createdAt', null) == request.time
+        && request.resource.data.get('updatedAt', null) == request.time;
+    }
+
+    function validShopOfferUpdate() {
+      return isShop()
+        && resource.data.get('shopId', '') == shopId()
+        && resource.data.get('approved', false) == false
+        && request.resource.data.get('shopId', '') == resource.data.get('shopId', '')
+        && request.resource.data.get('shopName', '') == resource.data.get('shopName', '')
+        && request.resource.data.get('approved', true) == false
+        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null)
+        && request.resource.data.get('title', '') is string
+        && request.resource.data.get('title', '').size() > 0
+        && request.resource.data.get('title', '').size() <= 120
+        && request.resource.data.get('description', '') is string
+        && request.resource.data.get('description', '').size() > 0
+        && request.resource.data.get('description', '').size() <= 2000
+        && request.resource.data.get('updatedAt', null) == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title',
+          'description',
+          'updatedAt'
+        ]);
+    }
+
+    function validCouponCode(code) {
+      return code.size() >= 3
+        && code.size() <= 30
+        && code.matches('^[A-Z0-9_-]{3,30}$');
+    }
+
+    function validNewShopCoupon(code) {
+      return isShop()
+        && validCouponCode(code)
+        && request.resource.data.keys().hasOnly([
+          'code',
+          'discount',
+          'active',
+          'shopId',
+          'shopName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.get('code', '') == code
+        && request.resource.data.get('discount', 0) is int
+        && request.resource.data.get('discount', 0) > 0
+        && request.resource.data.get('discount', 0) <= 1000000
+        && request.resource.data.get('active', false) is bool
+        && request.resource.data.get('shopId', '') == shopId()
+        && request.resource.data.get('shopName', '')
+          == get(/databases/$(database)/documents/shops/$(shopId())).data.name
+        && request.resource.data.get('createdAt', null) == request.time
+        && request.resource.data.get('updatedAt', null) == request.time;
+    }
+
+    function validShopCouponUpdate(code) {
+      return isShop()
+        && validCouponCode(code)
+        && resource.data.get('shopId', '') == shopId()
+        && resource.data.get('code', '') == code
+        && request.resource.data.get('code', '') == resource.data.get('code', '')
+        && request.resource.data.get('shopId', '') == resource.data.get('shopId', '')
+        && request.resource.data.get('shopName', '') == resource.data.get('shopName', '')
+        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null)
+        && request.resource.data.get('discount', 0) is int
+        && request.resource.data.get('discount', 0) > 0
+        && request.resource.data.get('discount', 0) <= 1000000
+        && request.resource.data.get('active', false) is bool
+        && request.resource.data.get('updatedAt', null) == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'discount',
+          'active',
+          'updatedAt'
+        ]);
+    }
+
+    function validNewMedia() {
+      return isShop()
+        && request.resource.data.keys().hasOnly([
+          'url',
+          'storagePath',
+          'type',
+          'ownerUid',
+          'shopId',
+          'shopName',
+          'createdAt'
+        ])
+        && request.resource.data.get('url', '') is string
+        && request.resource.data.get('url', '').size() > 0
+        && request.resource.data.get('url', '').size() <= 4096
+        && request.resource.data.get('storagePath', '') is string
+        && request.resource.data.get('storagePath', '')
+          .matches('^media/' + request.auth.uid + '/[^/]+$')
+        && request.resource.data.get('type', '') in [
+          'general',
+          'shop',
+          'product',
+          'branch'
+        ]
+        && request.resource.data.get('ownerUid', '') == request.auth.uid
+        && request.resource.data.get('shopId', '') == shopId()
+        && request.resource.data.get('shopName', '')
+          == get(/databases/$(database)/documents/shops/$(shopId())).data.name
+        && request.resource.data.get('createdAt', null) == request.time;
+    }
+
     function ownsSizeRequest(requestId) {
       return signedIn()
         && exists(/databases/$(database)/documents/size_requests/$(requestId))
@@ -681,10 +809,13 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
     match /offers/{id} {
-      allow read: if resource.data.approved == true || isAdmin() || (isShop() && resource.data.shopId == shopId());
-      allow create: if isShop() && request.resource.data.shopId == shopId();
-      allow update: if isAdmin() || (isShop() && resource.data.shopId == shopId() && resource.data.approved != true);
-      allow delete: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow get, list: if resource.data.get('approved', false) == true
+        || isAdmin()
+        || (isShop() && resource.data.get('shopId', '') == shopId());
+      allow create: if validNewOffer();
+      allow update: if isAdmin() || validShopOfferUpdate();
+      allow delete: if isAdmin()
+        || (isShop() && resource.data.get('shopId', '') == shopId());
     }
     match /size_requests/{id} {
       allow create: if validNewSizeRequest(id);
@@ -857,13 +988,25 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     match /coupons/{code} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() || isShop();
+      allow get: if resource.data.get('active', false) == true
+        || isAdmin()
+        || (isShop() && resource.data.get('shopId', '') == shopId());
+      allow list: if isAdmin()
+        || (isShop() && resource.data.get('shopId', '') == shopId());
+      allow create: if isAdmin() || validNewShopCoupon(code);
+      allow update: if isAdmin() || validShopCouponUpdate(code);
+      allow delete: if isAdmin()
+        || (isShop() && resource.data.get('shopId', '') == shopId());
     }
     match /media/{id} {
       allow read: if true;
-      allow create: if signedIn();
-      allow update, delete: if isAdmin() || isShop();
+      allow create: if validNewMedia();
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (
+        isShop()
+        && resource.data.get('ownerUid', '') == request.auth.uid
+        && resource.data.get('shopId', '') == shopId()
+      );
     }
   }
 }

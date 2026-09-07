@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'advanced_features.dart';
+import 'offer_submission.dart';
 import 'order_system.dart';
 import 'shop_qr_confirm_page.dart';
 import 'shop_store.dart';
@@ -285,6 +286,20 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                           ),
                           icon: const Icon(Icons.calendar_month),
                           label: const Text('حجوزات المحل'),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.all(16),
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const OfferSubmitPage(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.local_offer),
+                          label: const Text('إضافة عرض'),
                         ),
                       ],
                     )

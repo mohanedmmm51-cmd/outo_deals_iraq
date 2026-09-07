@@ -2,9 +2,69 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() { return request.auth != null; }
+
+    function hasUserDoc() {
+      return signedIn()
+        && firestore.exists(
+          /databases/(default)/documents/users/$(request.auth.uid)
+        );
+    }
+
+    function userDoc() {
+      return firestore.get(
+        /databases/(default)/documents/users/$(request.auth.uid)
+      );
+    }
+
+    function shopId() {
+      return userDoc().data.get('shopId', '');
+    }
+
+    function isAdmin() {
+      return hasUserDoc() && (
+        userDoc().data.get('role', '') == 'admin'
+        || userDoc().data.get('isAdmin', false) == true
+      );
+    }
+
+    function isApprovedShopOwner(ownerUid) {
+      return hasUserDoc()
+        && ownerUid == request.auth.uid
+        && userDoc().data.get('role', '') == 'shop'
+        && shopId() is string
+        && shopId() != ''
+        && firestore.exists(
+          /databases/(default)/documents/shops/$(shopId())
+        )
+        && firestore.get(
+          /databases/(default)/documents/shops/$(shopId())
+        ).data.get('ownerUid', '') == request.auth.uid
+        && firestore.get(
+          /databases/(default)/documents/shops/$(shopId())
+        ).data.get('approved', false) == true
+        && firestore.get(
+          /databases/(default)/documents/shops/$(shopId())
+        ).data.get('status', 'approved') != 'suspended';
+    }
+
+    function validImageUpload() {
+      return request.resource.size > 0
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /uploads/{allPaths=**} {
       allow read: if true;
-      allow write: if signedIn() && request.resource.size < 8 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+      allow create, update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /media/{ownerUid}/{fileName} {
+      allow read: if true;
+      allow create: if validImageUpload()
+        && (isAdmin() || isApprovedShopOwner(ownerUid));
+      allow update: if false;
+      allow delete: if isAdmin() || isApprovedShopOwner(ownerUid);
     }
   }
 }

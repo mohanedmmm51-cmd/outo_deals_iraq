@@ -599,47 +599,6 @@ class OnlineOffersPage extends StatelessWidget {
   }
 }
 
-class OfferSubmitPage extends StatefulWidget {
-  const OfferSubmitPage({super.key});
-
-  @override
-  State<OfferSubmitPage> createState() => _OfferSubmitPageState();
-}
-
-class _OfferSubmitPageState extends State<OfferSubmitPage> {
-  final title = TextEditingController();
-  final description = TextEditingController();
-
-  Future<void> _submit() async {
-    final shop = await ShopStore.load();
-    if (shop == null) return;
-    await FirebaseFirestore.instance.collection('offers').add({
-      'title': title.text.trim(),
-      'description': description.text.trim(),
-      'shopId': shop.id,
-      'shopName': shop.name,
-      'approved': false,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    if (mounted) Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('إضافة عرض')),
-        body: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(children: [
-            TextField(controller: title, decoration: const InputDecoration(labelText: 'عنوان العرض', border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            TextField(controller: description, maxLines: 4, decoration: const InputDecoration(labelText: 'تفاصيل العرض', border: OutlineInputBorder())),
-            const SizedBox(height: 14),
-            FilledButton(onPressed: _submit, child: const Text('إرسال للموافقة')),
-          ]),
-        ),
-      );
-}
-
 class OnlineNearbyShopsPage extends StatefulWidget {
   const OnlineNearbyShopsPage({super.key});
 

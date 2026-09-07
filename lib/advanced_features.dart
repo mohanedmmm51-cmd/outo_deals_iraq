@@ -14,6 +14,8 @@ part 'advanced/advanced_hub.dart';
 part 'advanced/request_helpers.dart';
 part 'advanced/availability_watch.dart';
 part 'advanced/appointments.dart';
+part 'advanced/coupons.dart';
+part 'advanced/media_gallery.dart';
 part 'advanced/customer_services.dart';
 part 'advanced/shop_tools.dart';
 
