@@ -501,7 +501,7 @@ service cloud.firestore {
         ])
         && request.resource.data.customerUid == request.auth.uid
         && targetShopMatches()
-        && request.resource.data.service in ['شد وبلنص', 'تبديل بطارية']
+        && request.resource.data.get('service', '') in ['شد وبلنص', 'تبديل بطارية']
         && request.resource.data.when is timestamp
         && request.resource.data.when > request.time
         && request.resource.data.when <= request.time + duration.value(90, 'd')
