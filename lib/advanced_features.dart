@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,15 +11,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'shop_store.dart';
 
 part 'advanced/advanced_hub.dart';
+part 'advanced/request_helpers.dart';
+part 'advanced/availability_watch.dart';
+part 'advanced/appointments.dart';
 part 'advanced/customer_services.dart';
 part 'advanced/shop_tools.dart';
 
 const advancedYellow = Color(0xFFFFD400);
 
 String advMoney(int n) => n.toString().replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
+  RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+  (m) => '${m[1]},',
+);
 
 class LocalCustomerStore {
   static const _favorites = 'adi_favorites_v1';

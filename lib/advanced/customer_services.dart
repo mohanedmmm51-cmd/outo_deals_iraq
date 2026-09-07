@@ -27,28 +27,6 @@ class _FavoritesPageState extends State<FavoritesPage> {
   );
 }
 
-class AvailabilityWatchPage extends StatefulWidget {
-  const AvailabilityWatchPage({super.key});
-  @override
-  State<AvailabilityWatchPage> createState() => _AvailabilityWatchPageState();
-}
-class _AvailabilityWatchPageState extends State<AvailabilityWatchPage> {
-  final size = TextEditingController();
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('تنبيه توفر القياس')),
-    body: Directionality(textDirection: TextDirection.rtl, child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-      TextField(controller: size, decoration: const InputDecoration(labelText: 'القياس المطلوب', border: OutlineInputBorder())),
-      const SizedBox(height: 10),
-      FilledButton.icon(onPressed: () async {
-        final value = size.text.trim(); if (value.isEmpty) return;
-        await FirebaseFirestore.instance.collection('availability_watch').add({'size': value, 'active': true, 'createdAt': FieldValue.serverTimestamp()});
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ التنبيه')));
-      }, icon: const Icon(Icons.notifications_active), label: const Text('نبهني عند التوفر')),
-    ]))),
-  );
-}
-
 class ShopComparePage extends StatelessWidget {
   const ShopComparePage({super.key});
   @override
@@ -69,35 +47,6 @@ class ShopComparePage extends StatelessWidget {
         }).toList());
       },
     )),
-  );
-}
-
-class AppointmentPage extends StatefulWidget {
-  const AppointmentPage({super.key});
-  @override
-  State<AppointmentPage> createState() => _AppointmentPageState();
-}
-class _AppointmentPageState extends State<AppointmentPage> {
-  String service = 'شد وبلنص';
-  DateTime when = DateTime.now().add(const Duration(days: 1));
-  Future<void> _save() async {
-    await FirebaseFirestore.instance.collection('appointments').add({'service': service, 'when': Timestamp.fromDate(when), 'status': 'pending', 'createdAt': FieldValue.serverTimestamp()});
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الحجز')));
-  }
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('حجز موعد')),
-    body: Directionality(textDirection: TextDirection.rtl, child: ListView(padding: const EdgeInsets.all(16), children: [
-      DropdownButtonFormField<String>(initialValue: service, decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'الخدمة'), items: const [DropdownMenuItem(value:'شد وبلنص', child: Text('شد وبلنص')), DropdownMenuItem(value:'تبديل بطارية', child: Text('تبديل بطارية'))], onChanged: (v) => setState(() => service = v ?? service)),
-      const SizedBox(height: 10),
-      ListTile(tileColor: Colors.white, title: const Text('الموعد'), subtitle: Text('${when.year}/${when.month}/${when.day} - ${when.hour}:${when.minute.toString().padLeft(2,'0')}'), trailing: const Icon(Icons.calendar_month), onTap: () async {
-        final d = await showDatePicker(context: context, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 90)), initialDate: when);
-        if (d == null || !mounted) return;
-        final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(when));
-        if (t != null) setState(() => when = DateTime(d.year,d.month,d.day,t.hour,t.minute));
-      }),
-      const SizedBox(height: 10), FilledButton(onPressed: _save, child: const Text('تأكيد الحجز')),
-    ])),
   );
 }
 

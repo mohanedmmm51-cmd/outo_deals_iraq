@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'advanced_features.dart';
 import 'order_system.dart';
 import 'shop_qr_confirm_page.dart';
 import 'shop_store.dart';
@@ -9,9 +10,9 @@ import 'size_request_page.dart';
 const shopYellow = Color(0xFFFFD400);
 
 String _money(int n) => n.toString().replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
+  RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+  (m) => '${m[1]},',
+);
 
 DateTime _weekStart(DateTime value) {
   final d = DateTime(value.year, value.month, value.day);
@@ -116,7 +117,10 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                     SizedBox(height: 8),
                     Text(
                       'إنشاء حساب المحل',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     SizedBox(height: 6),
                     Text(
@@ -175,20 +179,21 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
-              return Center(child: Text('تعذر تحميل الحساب: ${snapshot.error}'));
+              return Center(
+                child: Text('تعذر تحميل الحساب: ${snapshot.error}'),
+              );
             }
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
             final docs = snapshot.data!.docs;
-            final completed = docs
-                .where((d) => d.data()['completed'] == true)
-                .toList()
-              ..sort(
-                (a, b) => _asDate(b.data()['completedAt'])
-                    .compareTo(_asDate(a.data()['completedAt'])),
-              );
+            final completed =
+                docs.where((d) => d.data()['completed'] == true).toList()..sort(
+                  (a, b) =>
+                      _asDate(b.data()['completedAt'])
+                          .compareTo(_asDate(a.data()['completedAt'])),
+                );
 
             final start = _weekStart(DateTime.now());
             final end = start.add(const Duration(days: 7));
@@ -203,7 +208,8 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             );
             final weeklyCommission = thisWeek.fold<int>(
               0,
-              (sum, d) => sum + ((d.data()['commission'] as num?)?.toInt() ?? 0),
+              (sum, d) =>
+                  sum + ((d.data()['commission'] as num?)?.toInt() ?? 0),
             );
             final dueCommission = thisWeek
                 .where((d) => '${d.data()['settlementStatus'] ?? ''}' != 'paid')
@@ -250,6 +256,35 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                           ),
                           icon: const Icon(Icons.keyboard),
                           label: const Text('إدخال كود الطلب يدوياً'),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.all(16),
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const ShopAvailabilityWatchesPage(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.notifications_active),
+                          label: const Text('طلبات تنبيه التوفر'),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.all(16),
+                          ),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ShopAppointmentsPage(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.calendar_month),
+                          label: const Text('حجوزات المحل'),
                         ),
                       ],
                     )
@@ -398,8 +433,8 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
               snapshot.hasError
                   ? 'تعذر تحميل طلبات القياسات'
                   : count > 0
-                      ? '$count طلب مفتوح بانتظار عروض المحلات'
-                      : 'ماكو طلبات قياسات مفتوحة حالياً',
+                  ? '$count طلب مفتوح بانتظار عروض المحلات'
+                  : 'ماكو طلبات قياسات مفتوحة حالياً',
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -457,10 +492,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             Text(
               value,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -474,8 +506,8 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
     final settlementLabel = paid
         ? 'التسوية مدفوعة'
         : settlementStatus == 'pending'
-            ? 'داخل كشف وبانتظار الدفع'
-            : 'بانتظار كشف الإدارة';
+        ? 'داخل كشف وبانتظار الدفع'
+        : 'بانتظار كشف الإدارة';
 
     return Card(
       child: ListTile(

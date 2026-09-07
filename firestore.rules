@@ -425,6 +425,130 @@ service cloud.firestore {
         && request.resource.data.quotedAt == request.time;
     }
 
+    function ownsAvailabilityWatch(watchId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/availability_watch/$(watchId))
+        && get(/databases/$(database)/documents/availability_watch/$(watchId)).data.get('customerUid', '') == request.auth.uid;
+    }
+
+    function validNewAvailabilityWatch() {
+      return signedIn()
+        && request.resource.data.keys().hasOnly([
+          'customerUid',
+          'size',
+          'active',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.size is string
+        && request.resource.data.size.size() > 0
+        && request.resource.data.size.size() <= 100
+        && request.resource.data.active == true
+        && request.resource.data.status == 'watching'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validCustomerAvailabilityCancel() {
+      return signedIn()
+        && resource.data.get('customerUid', '') == request.auth.uid
+        && resource.data.get('active', false) == true
+        && resource.data.get('status', '') == 'watching'
+        && request.resource.data.get('active', true) == false
+        && request.resource.data.get('status', '') == 'cancelled'
+        && request.resource.data.get('updatedAt', null) == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'active',
+          'status',
+          'updatedAt'
+        ]);
+    }
+
+    function validShopAvailabilityMatch(watchId, matchId) {
+      return isShop()
+        && matchId == shopId()
+        && exists(/databases/$(database)/documents/availability_watch/$(watchId))
+        && get(/databases/$(database)/documents/availability_watch/$(watchId)).data.get('active', false) == true
+        && get(/databases/$(database)/documents/availability_watch/$(watchId)).data.get('status', '') == 'watching'
+        && request.resource.data.keys().hasOnly([
+          'shopId',
+          'shopName',
+          'note',
+          'matchedAt'
+        ])
+        && request.resource.data.shopId == shopId()
+        && request.resource.data.shopName
+          == get(/databases/$(database)/documents/shops/$(shopId())).data.name
+        && request.resource.data.note is string
+        && request.resource.data.note.size() > 0
+        && request.resource.data.note.size() <= 500
+        && request.resource.data.matchedAt == request.time;
+    }
+
+    function validNewAppointment() {
+      return signedIn()
+        && request.resource.data.keys().hasOnly([
+          'customerUid',
+          'shopId',
+          'shopName',
+          'service',
+          'when',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.customerUid == request.auth.uid
+        && targetShopMatches()
+        && request.resource.data.service in ['شد وبلنص', 'تبديل بطارية']
+        && request.resource.data.when is timestamp
+        && request.resource.data.when > request.time
+        && request.resource.data.when <= request.time + duration.value(90, 'd')
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function appointmentCoreUnchanged() {
+      return request.resource.data.get('customerUid', '') == resource.data.get('customerUid', '')
+        && request.resource.data.get('shopId', '') == resource.data.get('shopId', '')
+        && request.resource.data.get('shopName', '') == resource.data.get('shopName', '')
+        && request.resource.data.get('service', '') == resource.data.get('service', '')
+        && request.resource.data.get('when', null) == resource.data.get('when', null)
+        && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null);
+    }
+
+    function validCustomerAppointmentCancel() {
+      return signedIn()
+        && resource.data.get('customerUid', '') == request.auth.uid
+        && resource.data.get('status', '') in ['pending', 'accepted']
+        && request.resource.data.get('status', '') == 'cancelled'
+        && request.resource.data.get('updatedAt', null) == request.time
+        && appointmentCoreUnchanged()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'updatedAt'
+        ]);
+    }
+
+    function validShopAppointmentUpdate() {
+      return isShop()
+        && resource.data.get('shopId', '') == shopId()
+        && appointmentCoreUnchanged()
+        && request.resource.data.get('updatedAt', null) == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'updatedAt'
+        ])
+        && (
+          (resource.data.get('status', '') == 'pending'
+            && request.resource.data.get('status', '') in ['accepted', 'rejected'])
+          || (resource.data.get('status', '') == 'accepted'
+            && request.resource.data.get('status', '') in ['completed', 'cancelled'])
+        );
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn()
@@ -700,12 +824,36 @@ service cloud.firestore {
     }
 
     match /availability_watch/{id} {
-      allow create, get: if true;
-      allow list, update, delete: if isAdmin() || isShop();
+      allow create: if validNewAvailabilityWatch();
+      allow get: if isAdmin()
+        || ownsAvailabilityWatch(id)
+        || (isShop() && resource.data.get('active', false) == true);
+      allow list: if isAdmin()
+        || (isShop() && resource.data.get('active', false) == true)
+        || (signedIn() && resource.data.get('customerUid', '') == request.auth.uid);
+      allow update: if isAdmin() || validCustomerAvailabilityCancel();
+      allow delete: if isAdmin();
+
+      match /matches/{matchId} {
+        allow get: if isAdmin()
+          || ownsAvailabilityWatch(id)
+          || (isShop() && matchId == shopId());
+        allow list: if isAdmin() || ownsAvailabilityWatch(id);
+        allow create, update: if validShopAvailabilityMatch(id, matchId);
+        allow delete: if isAdmin() || (isShop() && matchId == shopId());
+      }
     }
     match /appointments/{id} {
-      allow create, get: if true;
-      allow list, update: if isAdmin() || isShop();
+      allow create: if validNewAppointment();
+      allow get: if isAdmin()
+        || (signedIn() && resource.data.get('customerUid', '') == request.auth.uid)
+        || (isShop() && resource.data.get('shopId', '') == shopId());
+      allow list: if isAdmin()
+        || (signedIn() && resource.data.get('customerUid', '') == request.auth.uid)
+        || (isShop() && resource.data.get('shopId', '') == shopId());
+      allow update: if isAdmin()
+        || validCustomerAppointmentCancel()
+        || validShopAppointmentUpdate();
       allow delete: if isAdmin();
     }
     match /coupons/{code} {
