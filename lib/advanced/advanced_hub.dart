@@ -17,7 +17,6 @@ class AdvancedHubPage extends StatelessWidget {
       (Icons.confirmation_number, 'كوبونات الخصم', 'كوبونات الإدارة والمحلات', const CouponsPage()),
       (Icons.group_add, 'برنامج الإحالة', 'شارك كود دعوة واكسب نقاط', const ReferralPage()),
       (Icons.receipt_long, 'الفاتورة الرقمية', 'فاتورة للطلبات المنفذة', const DigitalInvoicesPage()),
-      (Icons.photo_library, 'الصور', 'صور المنتجات والمحلات والفروع', const MediaGalleryPage()),
       (Icons.filter_alt, 'فلترة متقدمة', 'فلترة الإطارات والبطاريات', const ProductFilterPage()),
       (Icons.show_chart, 'تاريخ الأسعار', 'تابع ارتفاع ونزول الأسعار', const PriceHistoryPage()),
       (Icons.location_city, 'خريطة الطلب', 'المناطق الأعلى طلباً', const DemandHeatPage()),

@@ -7,7 +7,6 @@ on:
       - main
     paths:
       - 'firestore.rules'
-      - 'storage.rules'
       - 'firebase.json'
       - 'functions/**'
       - 'tools/**'
@@ -110,6 +109,7 @@ jobs:
         if: steps.credentials.outputs.configured == 'true' && (github.event_name == 'workflow_dispatch' || steps.functions_changed.outputs.changed == 'true')
         run: firebase deploy --only functions --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
 
-      - name: Deploy Firebase rules and Hosting
+      # Cloud Storage is deferred until Blaze billing and a default bucket are enabled.
+      - name: Deploy Firestore rules and Hosting
         if: steps.credentials.outputs.configured == 'true'
-        run: firebase deploy --only firestore:rules,storage,hosting --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
+        run: firebase deploy --only firestore:rules,hosting --project "${{ steps.firebase.outputs.project_id }}" --non-interactive
