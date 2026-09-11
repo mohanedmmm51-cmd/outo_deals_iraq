@@ -77,15 +77,29 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/price_rules/$(trustedVariant().priceRuleId)).data.value > 0;
     }
 
+    function trustedOfferMatches() {
+      let id = request.resource.data.get('offerId', '');
+      let offer = get(/databases/$(database)/documents/offers/$(id)).data;
+      return offer.approved == true
+        && offer.shopId == request.resource.data.shopId
+        && offer.productId == request.resource.data.productId
+        && offer.productDetail == request.resource.data.detail
+        && offer.price is int
+        && offer.price > trustedVariant().commission
+        && request.resource.data.price == offer.price;
+    }
+
     function trustedPriceMatches() {
       return trustedVariantExists()
         && (
+          (request.resource.data.get('offerId', '') != '' && trustedOfferMatches())
+          || (request.resource.data.get('offerId', '') == '' && (
           (remotePriceRuleUsable()
             && request.resource.data.price
               == get(/databases/$(database)/documents/price_rules/$(trustedVariant().priceRuleId)).data.value)
           || (!remotePriceRuleUsable()
             && request.resource.data.price == trustedVariant().fallbackPrice)
-        );
+        )));
     }
 
     function targetShopAvailable() {
@@ -132,6 +146,7 @@ service cloud.firestore {
         && request.resource.data.commission == resource.data.commission
         && request.resource.data.title == resource.data.title
         && request.resource.data.detail == resource.data.detail
+        && request.resource.data.get('offerId', '') == resource.data.get('offerId', '')
         && request.resource.data.get('productId', '') == resource.data.get('productId', '')
         && request.resource.data.get('inventoryItemId', '') == resource.data.get('inventoryItemId', '')
         && request.resource.data.shopId == resource.data.shopId
@@ -371,9 +386,21 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
+    function validOfferProduct() {
+      let d = request.resource.data;
+      return d.get('productId', '') in orderCatalog()
+        && d.get('productDetail', '') in orderCatalog()[d.productId].variants
+        && d.get('price', 0) is int
+        && d.price > orderCatalog()[d.productId].variants[d.productDetail].commission
+        && d.price <= 100000000;
+    }
+
     function validNewOffer() {
       return isShop()
         && request.resource.data.keys().hasOnly([
+          'productId',
+          'productDetail',
+          'price',
           'title',
           'description',
           'shopId',
@@ -382,6 +409,7 @@ service cloud.firestore {
           'createdAt',
           'updatedAt'
         ])
+        && validOfferProduct()
         && request.resource.data.get('title', '') is string
         && request.resource.data.get('title', '').size() > 0
         && request.resource.data.get('title', '').size() <= 120

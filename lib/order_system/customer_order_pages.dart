@@ -6,6 +6,8 @@ class OrderTicketPage extends StatefulWidget {
   final int price;
   final int commission;
   final String productId;
+  final String? offerId;
+  final String? requiredShopId;
 
   const OrderTicketPage({
     super.key,
@@ -14,6 +16,8 @@ class OrderTicketPage extends StatefulWidget {
     required this.price,
     required this.commission,
     this.productId = '',
+    this.offerId,
+    this.requiredShopId,
   });
 
   @override
@@ -41,7 +45,13 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
           .where('approved', isEqualTo: true)
           .get();
       final eligible = await InventoryService.eligibleShops(
-        snap.docs,
+        snap.docs
+            .where(
+              (d) =>
+                  widget.requiredShopId == null ||
+                  d.id == widget.requiredShopId,
+            )
+            .toList(),
         widget.productId,
       );
       if (mounted) {
@@ -69,6 +79,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
     });
     try {
       final created = await OrderStore.create(
+        offerId: widget.offerId,
         title: widget.title,
         detail: widget.detail,
         price: widget.price,

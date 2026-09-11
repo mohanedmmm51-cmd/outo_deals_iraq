@@ -203,9 +203,23 @@ class AdminOffersPage extends StatelessWidget {
 class _OffersTab extends StatelessWidget {
   const _OffersTab();
 
-  Future<void> _approve(DocumentSnapshot<Map<String, dynamic>> d, bool approved) async {
-    await d.reference.set({'approved': approved, if (approved) 'approvedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
-    await AuditLogService.record(action: approved ? 'offer_approved' : 'offer_hidden', targetType: 'offer', targetId: d.id, details: '${d.data()?['title'] ?? ''}');
+  Future<void> _approve(BuildContext context, DocumentSnapshot<Map<String, dynamic>> d, bool approved) async {
+    try {
+      await d.reference.set({'approved': approved, if (approved) 'approvedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(approved ? 'تم نشر العرض' : 'تم إخفاء العرض')));
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر تحديث العرض. حاول مرة ثانية')));
+      }
+      return;
+    }
+    try {
+      await AuditLogService.record(action: approved ? 'offer_approved' : 'offer_hidden', targetType: 'offer', targetId: d.id, details: '${d.data()?['title'] ?? ''}');
+    } catch (_) {
+      // Publishing succeeded; an audit retry must not report it as a failed publish.
+    }
   }
 
   @override
@@ -224,9 +238,9 @@ class _OffersTab extends StatelessWidget {
             final approved = x['approved'] == true;
             return Card(child: ListTile(
               title: Text('${x['title'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text('${x['description'] ?? ''}\n${x['shopName'] ?? ''}'),
+              subtitle: Text('${x['description'] ?? ''}\n${x['shopName'] ?? ''}\n${x['productId'] ?? ''} • ${x['productDetail'] ?? ''}\n${x['price'] == null ? 'عرض بدون سعر للطلب' : '${x['price']} د.ع'}'),
               isThreeLine: true,
-              trailing: approved ? IconButton(onPressed: () => _approve(d, false), icon: const Icon(Icons.visibility_off)) : FilledButton(onPressed: () => _approve(d, true), child: const Text('نشر')),
+              trailing: approved ? IconButton(onPressed: () => _approve(context, d, false), icon: const Icon(Icons.visibility_off)) : FilledButton(onPressed: () => _approve(context, d, true), child: const Text('نشر')),
             ));
           }).toList());
         },

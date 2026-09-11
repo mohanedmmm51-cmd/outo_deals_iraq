@@ -107,7 +107,9 @@ class AppOrder {
     'status': status,
     'expiresAt': expiresAt == null ? null : Timestamp.fromDate(expiresAt!),
     'productId': productId,
-    'inventoryItemId': productId.trim().isEmpty ? '' : inventoryDocId(productId),
+    'inventoryItemId': productId.trim().isEmpty
+        ? ''
+        : inventoryDocId(productId),
     'priceLocked': true,
     'priceLockedAt': FieldValue.serverTimestamp(),
     'settlementId': '',
@@ -275,6 +277,7 @@ class OrderStore {
     required String shopId,
     required String shopName,
     String productId = '',
+    String? offerId,
   }) async {
     var customer = FirebaseAuth.instance.currentUser;
     if (customer == null) {
@@ -284,7 +287,9 @@ class OrderStore {
       } catch (_) {}
     }
     if (customer == null) {
-      throw StateError('تعذر تأمين هوية الزبون. تأكد من الإنترنت وحاول مرة ثانية');
+      throw StateError(
+        'تعذر تأمين هوية الزبون. تأكد من الإنترنت وحاول مرة ثانية',
+      );
     }
     final customerUid = customer.uid;
 
@@ -310,6 +315,18 @@ class OrderStore {
     final shopRef = db.collection('shops').doc(shopId);
 
     await db.runTransaction((tx) async {
+      if (offerId != null) {
+        final offer = (await tx.get(db.collection('offers').doc(offerId)))
+            .data();
+        if (offer == null ||
+            offer['approved'] != true ||
+            offer['shopId'] != shopId ||
+            offer['productId'] != productId ||
+            offer['productDetail'] != detail ||
+            offer['price'] != price) {
+          throw StateError('العرض تغير أو لم يعد متاحاً. ارجع لصفحة العروض');
+        }
+      }
       final shopSnap = await tx.get(shopRef);
       final shopData = shopSnap.data();
       if (!shopSnap.exists ||
@@ -335,6 +352,7 @@ class OrderStore {
 
       tx.set(orderRef, {
         ...order.toFirestore(),
+        if (offerId != null) 'offerId': offerId,
         'customerUid': customerUid,
         'inventoryCheckedAt': FieldValue.serverTimestamp(),
       });
@@ -494,7 +512,9 @@ class OrderStore {
       return result;
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {
-        throw StateError('رمز تأكيد التنفيذ غير صحيح أو الطلب غير مخول لهذا المحل');
+        throw StateError(
+          'رمز تأكيد التنفيذ غير صحيح أو الطلب غير مخول لهذا المحل',
+        );
       }
       rethrow;
     }

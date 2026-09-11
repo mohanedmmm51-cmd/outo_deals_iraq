@@ -15,5 +15,7 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
+      - name: Test offer product matching
+        run: flutter test test/offer_products_test.dart
       - name: Build Android debug APK
         run: flutter build apk --debug -v
