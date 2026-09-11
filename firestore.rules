@@ -93,13 +93,15 @@ service cloud.firestore {
       return trustedVariantExists()
         && (
           (request.resource.data.get('offerId', '') != '' && trustedOfferMatches())
-          || (request.resource.data.get('offerId', '') == '' && (
-          (remotePriceRuleUsable()
-            && request.resource.data.price
-              == get(/databases/$(database)/documents/price_rules/$(trustedVariant().priceRuleId)).data.value)
-          || (!remotePriceRuleUsable()
-            && request.resource.data.price == trustedVariant().fallbackPrice)
-        )));
+          || (request.resource.data.get('offerId', '') == ''
+            && (
+              (remotePriceRuleUsable()
+                && request.resource.data.price
+                  == get(/databases/$(database)/documents/price_rules/$(trustedVariant().priceRuleId)).data.value)
+              || (!remotePriceRuleUsable()
+                && request.resource.data.price == trustedVariant().fallbackPrice)
+            ))
+        );
     }
 
     function targetShopAvailable() {
@@ -409,7 +411,8 @@ service cloud.firestore {
           'createdAt',
           'updatedAt'
         ])
-        && validOfferProduct()
+        && (!request.resource.data.keys().hasAny(['productId', 'productDetail', 'price'])
+          || validOfferProduct())
         && request.resource.data.get('title', '') is string
         && request.resource.data.get('title', '').size() > 0
         && request.resource.data.get('title', '').size() <= 120
