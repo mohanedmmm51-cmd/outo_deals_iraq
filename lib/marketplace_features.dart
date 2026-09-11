@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_features.dart' show AdminOffersPage;
 import 'data_deletion.dart';
+import 'offer_details.dart';
 import 'operations_features.dart';
 import 'shop_dashboard.dart';
 import 'shop_store.dart';
@@ -579,6 +580,7 @@ class OnlineOffersPage extends StatelessWidget {
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance.collection('offers').where('approved', isEqualTo: true).snapshots(),
           builder: (context, snap) {
+            if (snap.hasError) return const Center(child: Text('تعذر تحميل العروض'));
             if (!snap.hasData) return const Center(child: CircularProgressIndicator());
             final docs = snap.data!.docs.toList()..sort((a, b) => _asDate(b.data()['createdAt']).compareTo(_asDate(a.data()['createdAt'])));
             if (docs.isEmpty) return const Center(child: Text('ماكو عروض حالياً'));
@@ -592,6 +594,8 @@ class OnlineOffersPage extends StatelessWidget {
                   title: Text('${d['title'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('${d['description'] ?? ''}\n${d['shopName'] ?? ''}'),
                   isThreeLine: true,
+                  trailing: const Icon(Icons.chevron_left),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => OfferDetailsPage(offerId: docs[i].id))),
                 ));
               },
             );

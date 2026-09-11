@@ -2,6 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'shop_store.dart';
+import 'offer_products.dart';
+
+import 'package:flutter/services.dart';
 
 class OfferSubmitPage extends StatefulWidget {
   const OfferSubmitPage({super.key});
@@ -13,11 +16,15 @@ class OfferSubmitPage extends StatefulWidget {
 class _OfferSubmitPageState extends State<OfferSubmitPage> {
   final title = TextEditingController();
   final description = TextEditingController();
+  final price = TextEditingController();
+  final products = offerProducts();
+  OfferProduct? product;
   bool busy = false;
   String? error;
 
   @override
   void dispose() {
+    price.dispose();
     title.dispose();
     description.dispose();
     super.dispose();
@@ -35,6 +42,14 @@ class _OfferSubmitPageState extends State<OfferSubmitPage> {
       return;
     }
 
+    final amount = int.tryParse(price.text.trim());
+    if (product == null ||
+        amount == null ||
+        amount <= product!.commission ||
+        amount > 100000000) {
+      setState(() => error = 'اختار المنتج واكتب سعر نهائي صحيح بالدينار');
+      return;
+    }
     setState(() {
       busy = true;
       error = null;
@@ -49,6 +64,9 @@ class _OfferSubmitPageState extends State<OfferSubmitPage> {
         'description': cleanDescription,
         'shopId': shop.id,
         'shopName': shop.name,
+        'productId': product!.id,
+        'productDetail': product!.detail,
+        'price': amount,
         'approved': false,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -83,6 +101,40 @@ class _OfferSubmitPageState extends State<OfferSubmitPage> {
         child: ListView(
           padding: const EdgeInsets.all(18),
           children: [
+            DropdownButtonFormField<OfferProduct>(
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'المنتج وشروطه',
+                border: OutlineInputBorder(),
+              ),
+              items: products
+                  .map(
+                    (p) => DropdownMenuItem(
+                      value: p,
+                      child: Text(
+                        '${p.title} • ${p.detail}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: busy
+                  ? null
+                  : (value) => setState(() => product = value),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: price,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'السعر النهائي للعرض بالدينار',
+                helperText: 'للإطارات: سعر الزوج شامل الشد والبلنص',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: title,
               maxLength: 120,
