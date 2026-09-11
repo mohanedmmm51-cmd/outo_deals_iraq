@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'admin_features.dart' show AdminOffersPage;
 import 'data_deletion.dart';
 import 'operations_features.dart';
 import 'shop_dashboard.dart';
@@ -277,6 +278,8 @@ class AdminDashboardPage extends StatelessWidget {
                         Row(children: [Expanded(child: _adminStat(context, 'الطلبات', '${orders.length}', Icons.receipt_long, const OrdersManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'المنفذة', '${completed.length}', Icons.check_circle, const OrdersManagementPage(initialStatus: 'completed')))]),
                         const SizedBox(height: 8),
                         Row(children: [Expanded(child: _adminStat(context, 'المحلات', '${shops.length}', Icons.store, const AdminShopsManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'عمولات معلقة', '${_money(due)} د.ع', Icons.account_balance_wallet, const AdminPendingCommissionsPage()))]),
+                        const SizedBox(height: 8),
+                        _adminStat(context, 'إدارة العروض', 'مراجعة ونشر', Icons.local_offer, const AdminOffersPage()),
                         const SizedBox(height: 8),
                         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                           stream: FirebaseFirestore.instance

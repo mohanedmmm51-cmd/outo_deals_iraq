@@ -190,6 +190,16 @@ class _ShopsTab extends StatelessWidget {
       );
 }
 
+class AdminOffersPage extends StatelessWidget {
+  const AdminOffersPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('إدارة العروض')),
+        body: const _OffersTab(),
+      );
+}
+
 class _OffersTab extends StatelessWidget {
   const _OffersTab();
 
@@ -202,7 +212,13 @@ class _OffersTab extends StatelessWidget {
   Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('offers').snapshots(),
         builder: (context, snap) {
+          if (snap.hasError) {
+            return const Center(child: Text('تعذر تحميل العروض. حاول مرة ثانية.'));
+          }
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          if (snap.data!.docs.isEmpty) {
+            return const Center(child: Text('ماكو عروض للمراجعة حالياً'));
+          }
           return ListView(padding: const EdgeInsets.all(12), children: snap.data!.docs.map((d) {
             final x = d.data();
             final approved = x['approved'] == true;
