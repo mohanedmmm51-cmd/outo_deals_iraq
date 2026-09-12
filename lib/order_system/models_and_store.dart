@@ -1,7 +1,6 @@
 part of '../order_system_impl.dart';
 
 const _ordersKey = 'auto_deals_orders_v1';
-const _orderSecretsKey = 'auto_deals_order_confirmation_secrets_v1';
 const _ordersCollection = 'orders';
 const orderYellow = Color(0xFFFFD400);
 
@@ -11,13 +10,17 @@ String _money(int n) => n.toString().replaceAllMapped(
 );
 
 String createOrderCode() {
-  final now = DateTime.now().microsecondsSinceEpoch.toString();
-  return 'ADI-${now.substring(now.length - 10)}';
+  return (10000000 + Random.secure().nextInt(90000000)).toString();
 }
 
-String _createOrderConfirmationSecret() {
-  final secure = Random.secure();
-  return List.generate(12, (_) => secure.nextInt(10)).join();
+String normalizeOrderCode(String value) {
+  var code = value.trim().split('|').first.trim().toUpperCase();
+  const arabic = '٠١٢٣٤٥٦٧٨٩';
+  const persian = '۰۱۲۳۴۵۶۷۸۹';
+  for (var i = 0; i < 10; i++) {
+    code = code.replaceAll(arabic[i], '$i').replaceAll(persian[i], '$i');
+  }
+  return code.replaceAll(RegExp(r'\s+'), '');
 }
 
 class AppOrder {
@@ -201,53 +204,6 @@ class OrderStore {
     );
   }
 
-  static Future<Map<String, String>> _loadLocalSecrets() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_orderSecretsKey);
-    if (raw == null || raw.trim().isEmpty) return <String, String>{};
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return <String, String>{};
-      return decoded.map((key, value) => MapEntry('$key', '$value'));
-    } catch (_) {
-      return <String, String>{};
-    }
-  }
-
-  static Future<void> _saveLocalSecret(String code, String secret) async {
-    final prefs = await SharedPreferences.getInstance();
-    final secrets = await _loadLocalSecrets();
-    secrets[code.toUpperCase()] = secret;
-    await prefs.setString(_orderSecretsKey, jsonEncode(secrets));
-  }
-
-  static Future<String> confirmationSecretFor(String code) async {
-    final normalized = code.trim().toUpperCase();
-    if (normalized.isEmpty) return '';
-    final secrets = await _loadLocalSecrets();
-    final local = secrets[normalized] ?? '';
-    if (local.isNotEmpty) return local;
-
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('order_secrets')
-          .doc(normalized)
-          .get();
-      final secret = '${doc.data()?['secret'] ?? ''}'.trim();
-      if (secret.isNotEmpty) {
-        await _saveLocalSecret(normalized, secret);
-        return secret;
-      }
-    } catch (_) {}
-    return '';
-  }
-
-  static String securePayload(String code, String confirmationSecret) {
-    final normalizedCode = code.trim().toUpperCase();
-    final secret = confirmationSecret.trim();
-    return secret.isEmpty ? normalizedCode : '$normalizedCode|$secret';
-  }
-
   static Future<List<AppOrder>> load() async {
     final local = await _loadLocal();
     if (local.isEmpty) return local;
@@ -307,14 +263,15 @@ class OrderStore {
       expiresAt: now.add(const Duration(hours: 24)),
       productId: productId,
     );
-    final confirmationSecret = _createOrderConfirmationSecret();
 
     final db = FirebaseFirestore.instance;
     final orderRef = _remote.doc(order.code);
-    final secretRef = db.collection('order_secrets').doc(order.code);
     final shopRef = db.collection('shops').doc(shopId);
 
     await db.runTransaction((tx) async {
+      if ((await tx.get(orderRef)).exists) {
+        throw StateError('تعذر تخصيص كود الطلب. أعد المحاولة');
+      }
       if (offerId != null) {
         final offer = (await tx.get(db.collection('offers').doc(offerId)))
             .data();
@@ -356,17 +313,7 @@ class OrderStore {
         'customerUid': customerUid,
         'inventoryCheckedAt': FieldValue.serverTimestamp(),
       });
-      tx.set(secretRef, {
-        'code': order.code,
-        'secret': confirmationSecret,
-        'customerUid': customerUid,
-        'shopId': shopId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': Timestamp.fromDate(order.expiresAt!),
-      });
     });
-
-    await _saveLocalSecret(order.code, confirmationSecret);
 
     final local = await _loadLocal();
     local.removeWhere((e) => e.code == order.code);
@@ -393,7 +340,7 @@ class OrderStore {
   }
 
   static Future<AppOrder?> findByCode(String code) async {
-    final normalized = code.trim().toUpperCase();
+    final normalized = normalizeOrderCode(code);
     if (normalized.isEmpty) return null;
     try {
       final doc = await _remote.doc(normalized).get();
@@ -414,11 +361,9 @@ class OrderStore {
     String code, {
     required String shopId,
     required String shopName,
-    required String confirmationSecret,
   }) async {
-    final normalized = code.trim().toUpperCase();
+    final normalized = normalizeOrderCode(code);
     if (normalized.isEmpty) return null;
-    final cleanSecret = confirmationSecret.trim();
     final db = FirebaseFirestore.instance;
     final docRef = _remote.doc(normalized);
 
@@ -496,9 +441,7 @@ class OrderStore {
           'statusUpdatedAt': FieldValue.serverTimestamp(),
           'inventoryConsumedAt': FieldValue.serverTimestamp(),
         };
-        if (cleanSecret.isNotEmpty) {
-          completion['confirmationProof'] = cleanSecret;
-        }
+        completion['confirmationProof'] = normalized;
         tx.update(docRef, completion);
         return current.copyWith(
           completed: true,
@@ -520,7 +463,7 @@ class OrderStore {
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {
         throw StateError(
-          'رمز تأكيد التنفيذ غير صحيح أو الطلب غير مخول لهذا المحل',
+          'تعذر تأكيد الطلب. تأكد من موافقة المحل وصلاحية الطلب',
         );
       }
       rethrow;

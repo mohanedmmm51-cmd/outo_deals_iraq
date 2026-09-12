@@ -91,19 +91,15 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
 
   bool handling = false;
   AppOrder? order;
-  String confirmationSecret = '';
   String? message;
 
   Future<void> _detected(BarcodeCapture capture) async {
     if (handling || order != null) return;
     String? code;
-    String secret = '';
     for (final barcode in capture.barcodes) {
-      final raw = barcode.rawValue?.trim().toUpperCase();
-      if (raw != null && raw.startsWith('ADI-')) {
-        final parts = raw.split('|');
-        code = parts.first.trim();
-        if (parts.length > 1) secret = parts[1].trim();
+      final raw = normalizeOrderCode(barcode.rawValue ?? '');
+      if (RegExp(r'^([0-9]{8}|ADI-[0-9]{10})$').hasMatch(raw)) {
+        code = raw;
         break;
       }
     }
@@ -140,7 +136,6 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
       }
       setState(() {
         order = found;
-        confirmationSecret = secret;
       });
     } catch (e) {
       if (mounted) {
@@ -164,7 +159,6 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
         current.code,
         shopId: widget.shop.id,
         shopName: widget.shop.name,
-        confirmationSecret: confirmationSecret,
       );
       if (!mounted) return;
       setState(() {
@@ -175,9 +169,7 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
       });
     } catch (e) {
       if (mounted) {
-        setState(
-          () => message = e.toString().replaceFirst('Bad state: ', ''),
-        );
+        setState(() => message = e.toString().replaceFirst('Bad state: ', ''));
       }
     } finally {
       if (mounted) setState(() => handling = false);
@@ -187,7 +179,6 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
   Future<void> _scanAnother() async {
     setState(() {
       order = null;
-      confirmationSecret = '';
       message = null;
     });
     await scanner.start();
@@ -201,85 +192,94 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: Text('مسح طلب - ${widget.shop.name}'),
-          actions: [
-            IconButton(
-              tooltip: 'المخزون',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ShopInventoryPage()),
-              ),
-              icon: const Icon(Icons.inventory_2_outlined),
-            ),
-            IconButton(
-              tooltip: 'طلبات القياسات',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ShopSizeRequestsEnhancedPage()),
-              ),
-              icon: const Icon(Icons.straighten),
-            ),
-            IconButton(
-              tooltip: 'الفلاش',
-              onPressed: () => scanner.toggleTorch(),
-              icon: const Icon(Icons.flash_on),
-            ),
-          ],
+    appBar: AppBar(
+      title: Text('مسح طلب - ${widget.shop.name}'),
+      actions: [
+        IconButton(
+          tooltip: 'المخزون',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ShopInventoryPage()),
+          ),
+          icon: const Icon(Icons.inventory_2_outlined),
         ),
-        body: Directionality(
-          textDirection: TextDirection.rtl,
-          child: order == null ? _scannerView() : _orderView(),
+        IconButton(
+          tooltip: 'طلبات القياسات',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const ShopSizeRequestsEnhancedPage(),
+            ),
+          ),
+          icon: const Icon(Icons.straighten),
         ),
-      );
+        IconButton(
+          tooltip: 'الفلاش',
+          onPressed: () => scanner.toggleTorch(),
+          icon: const Icon(Icons.flash_on),
+        ),
+      ],
+    ),
+    body: Directionality(
+      textDirection: TextDirection.rtl,
+      child: order == null ? _scannerView() : _orderView(),
+    ),
+  );
 
   Widget _scannerView() => Stack(
-        fit: StackFit.expand,
-        children: [
-          MobileScanner(controller: scanner, onDetect: _detected),
-          IgnorePointer(
-            child: Center(
-              child: Container(
-                width: 260,
-                height: 260,
-                decoration: BoxDecoration(
-                  border: Border.all(color: orderYellow, width: 4),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-              ),
+    fit: StackFit.expand,
+    children: [
+      MobileScanner(controller: scanner, onDetect: _detected),
+      IgnorePointer(
+        child: Center(
+          child: Container(
+            width: 260,
+            height: 260,
+            decoration: BoxDecoration(
+              border: Border.all(color: orderYellow, width: 4),
+              borderRadius: BorderRadius.circular(24),
             ),
           ),
-          Positioned(
-            left: 20,
-            right: 20,
-            bottom: 30,
-            child: Card(
-              color: Colors.black87,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'وجّه الكاميرا على QR أو باركود الطلب',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                    if (handling) ...[
-                      const SizedBox(height: 10),
-                      const CircularProgressIndicator(),
-                    ],
-                    if (message != null) ...[
-                      const SizedBox(height: 8),
-                      Text(message!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
-                    ],
-                  ],
+        ),
+      ),
+      Positioned(
+        left: 20,
+        right: 20,
+        bottom: 30,
+        child: Card(
+          color: Colors.black87,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'وجّه الكاميرا على QR أو باركود الطلب',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
+                if (handling) ...[
+                  const SizedBox(height: 10),
+                  const CircularProgressIndicator(),
+                ],
+                if (message != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    message!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ],
             ),
           ),
-        ],
-      );
+        ),
+      ),
+    ],
+  );
 
   Widget _orderView() {
     final o = order!;
@@ -293,20 +293,19 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(o.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                Text(
+                  o.title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 Text(o.detail),
                 const SizedBox(height: 6),
                 Text('الكود: ${o.code}'),
                 Text('السعر المثبت: ${o.price} د.ع'),
                 Text('العمولة: ${o.commission} د.ع'),
-                if (confirmationSecret.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  const Chip(
-                    avatar: Icon(Icons.verified_user),
-                    label: Text('رمز تنفيذ آمن موجود داخل QR'),
-                  ),
-                ],
               ],
             ),
           ),
@@ -335,7 +334,11 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
         ),
         if (message != null) ...[
           const SizedBox(height: 12),
-          Text(message!, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            message!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
         ],
       ],
     );

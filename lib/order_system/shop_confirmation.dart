@@ -9,7 +9,6 @@ class ShopConfirmOrderPage extends StatefulWidget {
 
 class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
   final controller = TextEditingController();
-  final secretController = TextEditingController();
   AppOrder? found;
   ShopProfile? shop;
   String? message;
@@ -34,12 +33,7 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
       found = null;
     });
 
-    final raw = controller.text.trim().toUpperCase();
-    final parts = raw.split('|');
-    final code = parts.first.trim();
-    if (parts.length > 1 && secretController.text.trim().isEmpty) {
-      secretController.text = parts[1].trim();
-    }
+    final code = normalizeOrderCode(controller.text);
 
     final result = await OrderStore.findByCode(code);
     if (!mounted) return;
@@ -67,7 +61,6 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
         found!.code,
         shopId: currentShop.id,
         shopName: currentShop.name,
-        confirmationSecret: secretController.text,
       );
       if (!mounted) return;
       setState(() {
@@ -89,7 +82,6 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
   @override
   void dispose() {
     controller.dispose();
-    secretController.dispose();
     super.dispose();
   }
 
@@ -129,10 +121,11 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
           const SizedBox(height: 12),
           TextField(
             controller: controller,
-            textCapitalization: TextCapitalization.characters,
+            keyboardType: TextInputType.number,
+            textDirection: TextDirection.ltr,
             decoration: const InputDecoration(
               labelText: 'كود الطلب',
-              hintText: 'ADI-XXXXXXXXXX',
+              hintText: '12345678',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.qr_code),
             ),
@@ -181,24 +174,6 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
                     Text('العمولة: ${_money(found!.commission)} د.ع'),
                     Text('الحالة: ${orderStatusLabel(found!.status)}'),
                     const SizedBox(height: 12),
-                    if (!found!.completed) ...[
-                      TextField(
-                        controller: secretController,
-                        keyboardType: TextInputType.number,
-                        textDirection: TextDirection.ltr,
-                        maxLength: 12,
-                        decoration: const InputDecoration(
-                          labelText: 'رمز تأكيد التنفيذ من الزبون',
-                          hintText: '12 رقم',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.lock_outline),
-                        ),
-                      ),
-                      const Text(
-                        'الزبون يعطي هذا الرمز عند وصوله للمحل. مسح QR يدخله تلقائياً.',
-                      ),
-                      const SizedBox(height: 10),
-                    ],
                     if (found!.completed)
                       const Chip(
                         avatar: Icon(Icons.check_circle),

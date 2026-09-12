@@ -78,7 +78,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
         '${data['status'] ?? (data['completed'] == true ? 'completed' : 'new')}';
     final text =
         'طلب Auto Deals Iraq\n'
-        'الكود: ${widget.orderCode}\n'
+        '${data['acceptedAt'] != null ? 'الكود: ${widget.orderCode}\n' : ''}'
         'المنتج: ${data['title'] ?? ''}\n'
         'المحل: ${data['shopName'] ?? ''}\n'
         'السعر: ${opMoney((data['price'] as num?)?.toInt() ?? 0)} د.ع\n'
@@ -101,27 +101,12 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
           current['acceptedAt'] == null) {
         throw StateError('الطلب بانتظار موافقة المحل على السعر والعمولة');
       }
-      final snap = await FirebaseFirestore.instance
-          .collection('order_secrets')
-          .doc(widget.orderCode)
-          .get();
-      final secret = '${snap.data()?['secret'] ?? ''}'.trim();
       if (!mounted) return;
-      if (secret.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'هذا طلب قديم وما بيه رمز تنفيذ آمن. أنشئ طلب جديد للتنفيذ.',
-            ),
-          ),
-        );
-        return;
-      }
-      final payload = '${widget.orderCode}|$secret';
+      final payload = widget.orderCode;
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('تأكيد التنفيذ الآمن'),
+          title: const Text('كود الطلب'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -139,12 +124,12 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                 ),
                 const SizedBox(height: 14),
                 const Text(
-                  'رمز التأكيد اليدوي',
+                  'كود الطلب',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
                 SelectableText(
-                  secret,
+                  widget.orderCode,
                   textDirection: TextDirection.ltr,
                   style: const TextStyle(
                     fontSize: 22,
@@ -154,7 +139,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'لا تشارك رمز التأكيد قبل وصولك للمحل.',
+                  'أعطِ هذا الكود للمحل عند تنفيذ البيع.',
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -171,7 +156,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('تعذر تحميل رمز التنفيذ: $e')));
+          .showSnackBar(SnackBar(content: Text('تعذر تحميل كود الطلب: $e')));
     }
   }
 
@@ -235,7 +220,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        Text('الكود: ${widget.orderCode}'),
+                        if (termsAccepted) Text('الكود: ${widget.orderCode}'),
                         Text('المحل: ${data['shopName'] ?? ''}'),
                         Text(
                           'السعر: ${opMoney((data['price'] as num?)?.toInt() ?? 0)} د.ع',
@@ -252,7 +237,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                   const Padding(
                     padding: EdgeInsets.all(12),
                     child: Text(
-                      'طلبك بانتظار موافقة المحل على السعر. يظهر رمز التنفيذ بعد الموافقة. لا تتوجه للمحل بعد.',
+                      'طلبك بانتظار موافقة المحل على السعر. يظهر كود الطلب بعد الموافقة. لا تتوجه للمحل بعد.',
                     ),
                   ),
                 const SizedBox(height: 10),
@@ -270,7 +255,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                         ? _showSecureConfirmation
                         : null,
                     icon: const Icon(Icons.qr_code_2),
-                    label: const Text('عرض QR ورمز تأكيد التنفيذ'),
+                    label: const Text('عرض كود الطلب وQR'),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(

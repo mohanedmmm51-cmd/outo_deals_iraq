@@ -107,8 +107,7 @@ function inventoryDocId(productId) {
 }
 
 function makeOrderCode() {
-  const n = crypto.randomInt(0, 10000000000);
-  return `ADI-${String(n).padStart(10, '0')}`;
+  return String(crypto.randomInt(10000000, 100000000));
 }
 
 async function trustedProduct(productId, detail) {

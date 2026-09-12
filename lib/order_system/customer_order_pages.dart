@@ -235,7 +235,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
           textDirection: TextDirection.ltr,
           decoration: const InputDecoration(
             labelText: 'كود الطلب',
-            hintText: 'ADI-XXXXXXXXXX',
+            hintText: '12345678',
             prefixIcon: Icon(Icons.cloud_download_outlined),
             border: OutlineInputBorder(),
           ),
@@ -254,7 +254,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
         ],
       ),
     );
-    final normalized = code?.trim().toUpperCase() ?? '';
+    final normalized = normalizeOrderCode(code ?? '');
     if (normalized.isEmpty || !mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
@@ -277,7 +277,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
     await _load();
     if (!mounted) return;
     messenger.showSnackBar(
-      SnackBar(content: Text('تم استرجاع طلب ${restored.code} من السحابة')),
+      SnackBar(content: Text('تم استرجاع الطلب من السحابة')),
     );
   }
 
@@ -363,7 +363,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       subtitle: Text(
-                        '${o.code}\n${o.shopName} • ${_money(o.price)} د.ع • ${orderStatusLabel(status)}\nالسعر مثبت',
+                        '${['accepted', 'on_the_way', 'completed'].contains(status) ? '${o.code}\n' : ''}${o.shopName} • ${_money(o.price)} د.ع • ${orderStatusLabel(status)}\nالسعر مثبت',
                       ),
                       isThreeLine: true,
                       trailing: o.completed && o.shopId.isNotEmpty
