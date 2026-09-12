@@ -129,6 +129,9 @@ service cloud.firestore {
         && request.resource.data.commission == trustedVariant().commission
         && request.resource.data.priceLocked == true
         && request.resource.data.status == 'new'
+        && request.resource.data.get('acceptedAt', null) == null
+        && request.resource.data.get('acceptedPrice', null) == null
+        && request.resource.data.get('acceptedCommission', null) == null
         && request.resource.data.completed == false
         && request.resource.data.get('completedAt', null) == null
         && request.resource.data.get('settlementId', '') == ''
@@ -229,8 +232,16 @@ service cloud.firestore {
         );
     }
 
+    function shopAcceptedTerms() {
+      return resource.data.get('acceptedAt', null) is timestamp
+        && resource.data.get('acceptedPrice', -1) == resource.data.price
+        && resource.data.get('acceptedCommission', -1) == resource.data.commission;
+    }
+
     function validShopCompletion(code) {
       return resource.data.get('completed', false) == false
+        && resource.data.get('status', '') in ['accepted', 'on_the_way']
+        && shopAcceptedTerms()
         && !terminalStatus(resource.data.get('status', 'new'))
         && resource.data.expiresAt is timestamp
         && request.time < resource.data.expiresAt
@@ -262,6 +273,8 @@ service cloud.firestore {
         'status',
         'statusUpdatedAt',
         'acceptedAt',
+        'acceptedPrice',
+        'acceptedCommission',
         'completed',
         'completedAt',
         'inventoryConsumedAt',
@@ -275,7 +288,15 @@ service cloud.firestore {
           resource.data.get('completed', false) == false
           && request.resource.data.get('completed', false) == false
           && !terminalStatus(resource.data.get('status', 'new'))
-          && request.resource.data.get('status', 'new') in ['new', 'accepted', 'on_the_way']
+          && (resource.data.get('status', 'new') == 'new'
+            || (resource.data.get('status', '') in ['accepted', 'on_the_way']
+              && !shopAcceptedTerms()))
+          && request.resource.data.get('status', '') == 'accepted'
+          && resource.data.expiresAt is timestamp
+          && request.time < resource.data.expiresAt
+          && request.resource.data.get('acceptedAt', null) == request.time
+          && request.resource.data.get('acceptedPrice', -1) == resource.data.price
+          && request.resource.data.get('acceptedCommission', -1) == resource.data.commission
           && request.resource.data.get('completedAt', null) == resource.data.get('completedAt', null)
           && request.resource.data.get('inventoryConsumedAt', null) == resource.data.get('inventoryConsumedAt', null)
           && request.resource.data.get('confirmationProof', '') == resource.data.get('confirmationProof', '')
@@ -775,7 +796,11 @@ service cloud.firestore {
             'statusUpdatedAt',
             'cancelledAt'
           ])
-          && request.resource.data.status in ['on_the_way','cancelled']
+          && (request.resource.data.status == 'cancelled'
+            || (request.resource.data.status == 'on_the_way'
+              && resource.data.get('status', '') == 'accepted'
+              && shopAcceptedTerms()
+              && request.time < resource.data.expiresAt))
         )
         || (
           customerOwnsOrder()

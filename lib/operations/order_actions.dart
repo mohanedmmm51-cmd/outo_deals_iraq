@@ -34,7 +34,9 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
   final note = TextEditingController();
 
   Future<void> _setStatus(String status) async {
-    final ref = FirebaseFirestore.instance.collection('orders').doc(widget.orderCode);
+    final ref = FirebaseFirestore.instance
+        .collection('orders')
+        .doc(widget.orderCode);
     await ref.set({
       'status': status,
       'statusUpdatedAt': FieldValue.serverTimestamp(),
@@ -48,9 +50,12 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
 
   Future<void> _cancel() async {
     await _setStatus('cancelled');
-    await FirebaseFirestore.instance.collection('orders').doc(widget.orderCode).set({
-      'cancelledAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    await FirebaseFirestore.instance
+        .collection('orders')
+        .doc(widget.orderCode)
+        .set({
+          'cancelledAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
   }
 
   Future<void> _addNote() async {
@@ -61,16 +66,18 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
         .doc(widget.orderCode)
         .collection('notes')
         .add({
-      'text': text,
-      'actorUid': FirebaseAuth.instance.currentUser?.uid ?? '',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+          'text': text,
+          'actorUid': FirebaseAuth.instance.currentUser?.uid ?? '',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
     note.clear();
   }
 
   Future<void> _share(Map<String, dynamic> data) async {
-    final status = '${data['status'] ?? (data['completed'] == true ? 'completed' : 'new')}';
-    final text = 'طلب Auto Deals Iraq\n'
+    final status =
+        '${data['status'] ?? (data['completed'] == true ? 'completed' : 'new')}';
+    final text =
+        'طلب Auto Deals Iraq\n'
         'الكود: ${widget.orderCode}\n'
         'المنتج: ${data['title'] ?? ''}\n'
         'المحل: ${data['shopName'] ?? ''}\n'
@@ -81,6 +88,19 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
 
   Future<void> _showSecureConfirmation() async {
     try {
+      final current =
+          (await FirebaseFirestore.instance
+                  .collection('orders')
+                  .doc(widget.orderCode)
+                  .get())
+              .data();
+      if (current == null ||
+          !['accepted', 'on_the_way'].contains(current['status']) ||
+          current['acceptedPrice'] != current['price'] ||
+          current['acceptedCommission'] != current['commission'] ||
+          current['acceptedAt'] == null) {
+        throw StateError('الطلب بانتظار موافقة المحل على السعر والعمولة');
+      }
       final snap = await FirebaseFirestore.instance
           .collection('order_secrets')
           .doc(widget.orderCode)
@@ -90,7 +110,9 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
       if (secret.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('هذا طلب قديم وما بيه رمز تنفيذ آمن. أنشئ طلب جديد للتنفيذ.'),
+            content: Text(
+              'هذا طلب قديم وما بيه رمز تنفيذ آمن. أنشئ طلب جديد للتنفيذ.',
+            ),
           ),
         );
         return;
@@ -148,9 +170,8 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر تحميل رمز التنفيذ: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('تعذر تحميل رمز التنفيذ: $e')));
     }
   }
 
@@ -162,7 +183,9 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final ref = FirebaseFirestore.instance.collection('orders').doc(widget.orderCode);
+    final ref = FirebaseFirestore.instance
+        .collection('orders')
+        .doc(widget.orderCode);
     return Scaffold(
       appBar: AppBar(title: const Text('تفاصيل الطلب')),
       body: Directionality(
@@ -170,12 +193,15 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: ref.snapshots(),
           builder: (context, snap) {
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            if (!snap.hasData)
+              return const Center(child: CircularProgressIndicator());
             final data = snap.data!.data();
-            if (data == null) return const Center(child: Text('الطلب غير موجود'));
+            if (data == null)
+              return const Center(child: Text('الطلب غير موجود'));
 
             var status = '${data['status'] ?? ''}';
-            if (status.isEmpty) status = data['completed'] == true ? 'completed' : 'new';
+            if (status.isEmpty)
+              status = data['completed'] == true ? 'completed' : 'new';
             final expires = opDate(data['expiresAt']);
             if (expires.millisecondsSinceEpoch > 0 &&
                 DateTime.now().isAfter(expires) &&
@@ -183,7 +209,14 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                 status != 'cancelled') {
               status = 'expired';
             }
-            final terminal = status == 'completed' || status == 'cancelled' || status == 'expired';
+            final termsAccepted =
+                data['acceptedPrice'] == data['price'] &&
+                data['acceptedCommission'] == data['commission'] &&
+                data['acceptedAt'] != null;
+            final terminal =
+                status == 'completed' ||
+                status == 'cancelled' ||
+                status == 'expired';
 
             return ListView(
               padding: const EdgeInsets.all(16),
@@ -195,15 +228,33 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${data['title'] ?? ''}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+                        Text(
+                          '${data['title'] ?? ''}',
+                          style: const TextStyle(
+                            fontSize: 21,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         Text('الكود: ${widget.orderCode}'),
                         Text('المحل: ${data['shopName'] ?? ''}'),
-                        Text('السعر: ${opMoney((data['price'] as num?)?.toInt() ?? 0)} د.ع'),
-                        Text('الحالة: ${orderStatusLabel(status)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                          'السعر: ${opMoney((data['price'] as num?)?.toInt() ?? 0)} د.ع',
+                        ),
+                        Text(
+                          'الحالة: ${orderStatusLabel(status)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
                   ),
                 ),
+                if (!terminal && !termsAccepted)
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text(
+                      'طلبك بانتظار موافقة المحل على السعر. يظهر رمز التنفيذ بعد الموافقة. لا تتوجه للمحل بعد.',
+                    ),
+                  ),
                 const SizedBox(height: 10),
                 FilledButton.icon(
                   onPressed: () => _share(data),
@@ -213,13 +264,19 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                 if (!terminal) ...[
                   const SizedBox(height: 8),
                   FilledButton.icon(
-                    onPressed: _showSecureConfirmation,
+                    onPressed:
+                        termsAccepted &&
+                            (status == 'accepted' || status == 'on_the_way')
+                        ? _showSecureConfirmation
+                        : null,
                     icon: const Icon(Icons.qr_code_2),
                     label: const Text('عرض QR ورمز تأكيد التنفيذ'),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: () => _setStatus('on_the_way'),
+                    onPressed: termsAccepted && status == 'accepted'
+                        ? () => _setStatus('on_the_way')
+                        : null,
                     icon: const Icon(Icons.directions_car),
                     label: const Text('أنا بالطريق للمحل'),
                   ),
@@ -245,23 +302,35 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                   label: const Text('إرسال شكوى على المحل'),
                 ),
                 const SizedBox(height: 12),
-                const Text('ملاحظات الطلب', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                const Text(
+                  'ملاحظات الطلب',
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: note,
-                        decoration: const InputDecoration(hintText: 'اكتب ملاحظة', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(
+                          hintText: 'اكتب ملاحظة',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    IconButton(onPressed: _addNote, icon: const Icon(Icons.send)),
+                    IconButton(
+                      onPressed: _addNote,
+                      icon: const Icon(Icons.send),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: ref.collection('notes').orderBy('createdAt', descending: true).snapshots(),
+                  stream: ref
+                      .collection('notes')
+                      .orderBy('createdAt', descending: true)
+                      .snapshots(),
                   builder: (context, notesSnap) {
                     if (!notesSnap.hasData) return const SizedBox.shrink();
                     return Column(
@@ -327,25 +396,34 @@ class _ComplaintSubmitPageState extends State<ComplaintSubmitPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('إرسال شكوى')),
-        body: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              children: [
-                Text(widget.shopName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  maxLines: 5,
-                  decoration: const InputDecoration(labelText: 'تفاصيل الشكوى', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                FilledButton(onPressed: busy ? null : _submit, child: const Text('إرسال الشكوى')),
-              ],
+    appBar: AppBar(title: const Text('إرسال شكوى')),
+    body: Directionality(
+      textDirection: TextDirection.rtl,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          children: [
+            Text(
+              widget.shopName,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-          ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'تفاصيل الشكوى',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: busy ? null : _submit,
+              child: const Text('إرسال الشكوى'),
+            ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }

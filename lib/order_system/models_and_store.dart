@@ -430,6 +430,13 @@ class OrderStore {
         if (current.shopId.isNotEmpty && current.shopId != shopId) {
           throw StateError('هذا الطلب مخصص لمحل آخر');
         }
+        if (current.status != 'accepted' &&
+            current.status != 'on_the_way' &&
+            !current.completed) {
+          throw StateError(
+            'لا يمكن تنفيذ الطلب قبل موافقة المحل على السعر والعمولة',
+          );
+        }
         if (current.status == 'cancelled') throw StateError('هذا الطلب ملغي');
         if (current.status == 'expired') {
           throw StateError('انتهت صلاحية كود الطلب');

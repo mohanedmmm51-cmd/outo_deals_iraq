@@ -19,9 +19,9 @@ part 'operations/risk_and_audit.dart';
 const operationsYellow = Color(0xFFFFD400);
 
 String opMoney(int n) => n.toString().replaceAllMapped(
-      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
+  RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+  (m) => '${m[1]},',
+);
 
 DateTime opDate(dynamic value) {
   if (value is Timestamp) return value.toDate();
@@ -42,6 +42,6 @@ String orderStatusLabel(String status) {
     case 'expired':
       return 'منتهي';
     default:
-      return 'جديد';
+      return 'بانتظار موافقة المحل';
   }
 }

@@ -28,7 +28,6 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   AppOrder? order;
   List<QueryDocumentSnapshot<Map<String, dynamic>>>? shops;
   String? selectedShopId;
-  String confirmationSecret = '';
   bool busy = false;
   String? error;
 
@@ -88,11 +87,9 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
         shopName: '${shop.data()['name'] ?? ''}',
         productId: widget.productId,
       );
-      final secret = await OrderStore.confirmationSecretFor(created.code);
       if (mounted) {
         setState(() {
           order = created;
-          confirmationSecret = secret;
         });
       }
     } catch (e) {
@@ -106,13 +103,15 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(order == null ? 'اختيار المحل' : 'كود الطلب')),
-    body: Directionality(
-      textDirection: TextDirection.rtl,
-      child: order == null ? _chooser() : _ticket(),
-    ),
-  );
+  Widget build(BuildContext context) => order != null
+      ? OrderActionsPage(orderCode: order!.code)
+      : Scaffold(
+          appBar: AppBar(title: const Text('إرسال طلب للمحل')),
+          body: Directionality(
+            textDirection: TextDirection.rtl,
+            child: _chooser(),
+          ),
+        );
 
   Widget _chooser() {
     if (shops == null) return const Center(child: CircularProgressIndicator());
@@ -157,10 +156,10 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text('السعر النهائي المثبت: ${_money(widget.price)} د.ع'),
+                Text('السعر المطلوب: ${_money(widget.price)} د.ع'),
                 const SizedBox(height: 5),
                 const Text(
-                  'بعد إنشاء الكود ما يقدر المحل يغيّر سعر هذا الطلب.',
+                  'يرسل الطلب للمحل للموافقة على السعر. لا تتوجه للمحل قبل قبول الطلب.',
                 ),
               ],
             ),
@@ -190,7 +189,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
           onPressed: busy || selectedShopId == null ? null : _create,
           icon: const Icon(Icons.qr_code_2),
           label: Text(
-            busy ? 'جاري تثبيت الطلب...' : 'إنشاء الكود وتثبيت السعر',
+            busy ? 'جاري إرسال الطلب...' : 'إرسال الطلب بانتظار موافقة المحل',
           ),
         ),
         if (error != null)
@@ -198,108 +197,6 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
             padding: const EdgeInsets.only(top: 10),
             child: Text(error!, textAlign: TextAlign.center),
           ),
-      ],
-    );
-  }
-
-  Widget _ticket() {
-    final payload = OrderStore.securePayload(order!.code, confirmationSecret);
-    return ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        Card(
-          color: orderYellow,
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  order!.title,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(order!.detail),
-                Text(
-                  'المحل: ${order!.shopName}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  'السعر المثبت: ${_money(order!.price)} د.ع',
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'صلاحية الكود: 24 ساعة • السعر لا يتغير خلال الصلاحية',
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 18),
-        const Text(
-          'كود الزيارة/الشراء',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        SelectableText(
-          order!.code,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-        ),
-        if (confirmationSecret.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          const Text(
-            'رمز تأكيد التنفيذ',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          SelectableText(
-            confirmationSecret,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 22, letterSpacing: 2),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'لا تعطي هذا الرمز للمحل إلا وقت تنفيذ الطلب. المسح بالـ QR يدخله تلقائياً.',
-            textAlign: TextAlign.center,
-          ),
-        ],
-        const SizedBox(height: 18),
-        Center(
-          child: BarcodeWidget(
-            barcode: Barcode.qrCode(),
-            data: payload,
-            width: 200,
-            height: 200,
-          ),
-        ),
-        const SizedBox(height: 18),
-        Center(
-          child: BarcodeWidget(
-            barcode: Barcode.code128(),
-            data: payload,
-            width: 290,
-            height: 90,
-            drawText: false,
-          ),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => OrderActionsPage(orderCode: order!.code),
-            ),
-          ),
-          icon: const Icon(Icons.manage_search),
-          label: const Text('إدارة ومشاركة الطلب'),
-        ),
       ],
     );
   }

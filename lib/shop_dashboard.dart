@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'advanced_features.dart';
 import 'offer_submission.dart';
 import 'order_system.dart';
+import 'operations_features.dart';
 import 'shop_qr_confirm_page.dart';
 import 'shop_store.dart';
 import 'size_request_page.dart';
@@ -243,6 +244,19 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                           ),
                           icon: const Icon(Icons.qr_code_scanner),
                           label: const Text('مسح طلب الزبون'),
+                        ),
+                        const SizedBox(height: 8),
+                        FilledButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ShopOrdersPage(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.pending_actions),
+                          label: const Text(
+                            'طلبات المحل والموافقة على الأسعار',
+                          ),
                         ),
                         const SizedBox(height: 8),
                         OutlinedButton.icon(
