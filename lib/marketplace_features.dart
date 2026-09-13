@@ -1,3 +1,6 @@
+import 'marketplace_rules.dart';
+import 'settlement_payment.dart';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -343,15 +346,7 @@ class AdminDashboardPage extends StatelessWidget {
                           return Card(child: ListTile(
                             title: Text('${data['shopName'] ?? data['shopId'] ?? ''}'),
                             subtitle: Text('العمولة: ${_money((data['totalCommission'] as num?)?.toInt() ?? 0)} د.ع • ${pending ? 'بانتظار الدفع' : 'تم الدفع'}'),
-                            trailing: pending ? FilledButton(onPressed: () async {
-                              final batch = FirebaseFirestore.instance.batch();
-                              batch.update(d.reference, {'status': 'paid', 'paidAt': FieldValue.serverTimestamp()});
-                              final codes = (data['orderCodes'] as List?)?.cast<String>() ?? <String>[];
-                              for (final code in codes) {
-                                batch.update(FirebaseFirestore.instance.collection('orders').doc(code), {'settlementStatus': 'paid'});
-                              }
-                              await batch.commit();
-                            }, child: const Text('تم الدفع')) : const Icon(Icons.done_all, color: Colors.green),
+                            trailing: pending ? SettlementPaidButton(key: ValueKey(d.id), reference: d.reference) : const Icon(Icons.done_all, color: Colors.green),
                           ));
                         }),
                       ],
@@ -485,27 +480,6 @@ class AdminShopsManagementPage extends StatelessWidget {
 class AdminPendingCommissionsPage extends StatelessWidget {
   const AdminPendingCommissionsPage({super.key});
 
-  Future<void> _markPaid(
-    DocumentSnapshot<Map<String, dynamic>> settlement,
-  ) async {
-    final data = settlement.data()!;
-    final batch = FirebaseFirestore.instance.batch();
-    batch.update(settlement.reference, {
-      'status': 'paid',
-      'paidAt': FieldValue.serverTimestamp(),
-    });
-    final codes =
-        (data['orderCodes'] as List?)?.map((code) => '$code').toList() ??
-            <String>[];
-    for (final code in codes) {
-      batch.update(
-        FirebaseFirestore.instance.collection('orders').doc(code),
-        {'settlementStatus': 'paid'},
-      );
-    }
-    await batch.commit();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -553,9 +527,9 @@ class AdminPendingCommissionsPage extends StatelessWidget {
                       'عدد الطلبات: $orderCount',
                     ),
                     isThreeLine: true,
-                    trailing: FilledButton(
-                      onPressed: () => _markPaid(settlement),
-                      child: const Text('تم الدفع'),
+                    trailing: SettlementPaidButton(
+                      key: ValueKey(settlement.id),
+                      reference: settlement.reference,
                     ),
                   ),
                 );
@@ -616,65 +590,159 @@ class OnlineNearbyShopsPage extends StatefulWidget {
 class _OnlineNearbyShopsPageState extends State<OnlineNearbyShopsPage> {
   Position? position;
   String? error;
+  bool locating = false;
+  bool settingsNeeded = false;
+  bool gpsDisabled = false;
+  late Stream<QuerySnapshot<Map<String, dynamic>>> shopsStream;
 
   @override
   void initState() {
     super.initState();
+    _resetStream();
     _locate();
   }
 
+  void _resetStream() {
+    shopsStream = FirebaseFirestore.instance.collection('shops')
+        .where('approved', isEqualTo: true).snapshots();
+  }
+
   Future<void> _locate() async {
+    if (locating) return;
+    setState(() {
+      locating = true;
+      error = null;
+      settingsNeeded = false;
+      gpsDisabled = false;
+    });
     try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        gpsDisabled = true;
+        throw StateError('فعّل خدمة الموقع GPS ثم أعد المحاولة');
+      }
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) throw Exception('صلاحية الموقع غير مفعلة');
-      final p = await Geolocator.getCurrentPosition();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        settingsNeeded = true;
+        throw StateError('فعّل صلاحية الموقع من إعدادات التطبيق');
+      }
+      if (permission == LocationPermission.denied) {
+        throw StateError('اسمح للتطبيق باستخدام الموقع حتى نعرض أقرب المحلات');
+      }
+      final p = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
       if (mounted) setState(() => position = p);
+    } on TimeoutException {
+      if (mounted) setState(() => error = 'تأخر تحديد الموقع. حاول بمكان مفتوح وأعد المحاولة');
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) setState(() => error = e.toString().replaceFirst('Bad state: ', ''));
+    } finally {
+      if (mounted) setState(() => locating = false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('المحلات القريبة')),
-      body: position == null
-          ? Center(child: error == null ? const CircularProgressIndicator() : Text(error!))
-          : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('shops').where('approved', isEqualTo: true).snapshots(),
-              builder: (context, snap) {
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                final shops = snap.data!.docs.map((d) {
-                  final data = d.data();
-                  final lat = (data['latitude'] as num?)?.toDouble();
-                  final lng = (data['longitude'] as num?)?.toDouble();
-                  final distance = lat == null || lng == null ? double.infinity : Geolocator.distanceBetween(position!.latitude, position!.longitude, lat, lng) / 1000;
-                  return (doc: d, distance: distance);
-                }).toList()..sort((a, b) => a.distance.compareTo(b.distance));
-                return Directionality(
-                  textDirection: TextDirection.rtl,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: shops.length,
-                    itemBuilder: (_, i) {
-                      final item = shops[i];
-                      final data = item.doc.data();
-                      final lat = (data['latitude'] as num?)?.toDouble();
-                      final lng = (data['longitude'] as num?)?.toDouble();
-                      return Card(child: ListTile(
-                        leading: const Icon(Icons.storefront),
-                        title: Text('${data['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(item.distance.isFinite ? '${item.distance.toStringAsFixed(1)} كم' : 'الموقع غير محدد'),
-                        trailing: lat == null || lng == null ? null : IconButton(icon: const Icon(Icons.directions), onPressed: () => launchUrl(Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng'), mode: LaunchMode.externalApplication)),
-                      ));
-                    },
-                  ),
-                );
-              },
-            ),
-    );
+  Future<void> _openSettings() async {
+    try {
+      final opened = gpsDisabled
+          ? await Geolocator.openLocationSettings()
+          : await Geolocator.openAppSettings();
+      if (!opened) throw StateError('افتح إعدادات الموقع من إعدادات الجهاز');
+    } catch (_) {
+      if (mounted) setState(() => error = 'افتح إعدادات الموقع من إعدادات الجهاز');
+    }
   }
+
+  Future<void> _directions(double lat, double lng) async {
+    try {
+      final opened = await launchUrl(Uri.https('www.google.com', '/maps/dir/', {
+        'api': '1', 'destination': '$lat,$lng', 'travelmode': 'driving',
+      }), mode: LaunchMode.externalApplication);
+      if (!opened) throw StateError('تعذر فتح الخرائط');
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح الخرائط. تأكد من وجود تطبيق خرائط أو متصفح')),
+      );
+    }
+  }
+
+  Widget _locationMessage() => Padding(
+    padding: const EdgeInsets.all(20),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(error ?? 'جاري تحديد موقعك...', textAlign: TextAlign.center),
+      const SizedBox(height: 12),
+      if (locating) const CircularProgressIndicator()
+      else FilledButton.icon(onPressed: _locate, icon: const Icon(Icons.refresh),
+        label: const Text('إعادة تحديد الموقع')),
+      if (settingsNeeded || gpsDisabled)
+        TextButton(onPressed: _openSettings, child: const Text('فتح الإعدادات')),
+    ]),
+  );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('المحلات القريبة'), actions: [
+      IconButton(tooltip: 'تحديث الموقع', onPressed: locating ? null : _locate,
+        icon: const Icon(Icons.my_location)),
+    ]),
+    body: Directionality(
+      textDirection: TextDirection.rtl,
+      child: position == null ? Center(child: _locationMessage()) : Column(children: [
+        if (error != null) _locationMessage(),
+        if (locating) const LinearProgressIndicator(),
+        Expanded(child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: shopsStream,
+          builder: (context, snap) {
+            if (snap.hasError) return Center(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('تعذر تحميل المحلات. تحقق من الاتصال'),
+                TextButton(onPressed: () => setState(_resetStream), child: const Text('إعادة المحاولة')),
+              ],
+            ));
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            final shops = snap.data!.docs.where((d) => d.data()['status'] != 'suspended').map((d) {
+              final data = d.data();
+              final lat = (data['latitude'] as num?)?.toDouble();
+              final lng = (data['longitude'] as num?)?.toDouble();
+              final distance = validCoordinates(lat, lng)
+                  ? Geolocator.distanceBetween(position!.latitude, position!.longitude, lat!, lng!) / 1000
+                  : double.infinity;
+              return (doc: d, distance: distance);
+            }).toList()..sort((a, b) {
+              final byDistance = a.distance.compareTo(b.distance);
+              return byDistance != 0 ? byDistance : a.doc.id.compareTo(b.doc.id);
+            });
+            if (shops.isEmpty) return const Center(child: Text('ماكو محلات متاحة حالياً'));
+            return ListView.builder(
+              padding: const EdgeInsets.all(16), itemCount: shops.length,
+              itemBuilder: (_, i) {
+                final item = shops[i];
+                final data = item.doc.data();
+                final lat = (data['latitude'] as num?)?.toDouble();
+                final lng = (data['longitude'] as num?)?.toDouble();
+                return Card(child: ListTile(
+                  leading: const Icon(Icons.storefront),
+                  title: Text('${data['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(item.distance.isFinite
+                    ? '${item.distance.toStringAsFixed(1)} كم تقريباً بخط مستقيم' : 'الموقع غير محدد'),
+                  trailing: !validCoordinates(lat, lng) ? null : IconButton(
+                    tooltip: 'الاتجاهات', icon: const Icon(Icons.directions),
+                    onPressed: () => _directions(lat!, lng!),
+                  ),
+                ));
+              },
+            );
+          },
+        )),
+      ]),
+    ),
+  );
 }
 
 class OnlineSizeRequestPage extends StatefulWidget {

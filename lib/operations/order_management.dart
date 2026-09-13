@@ -1,13 +1,39 @@
 part of '../operations_features.dart';
 
-class ShopOrdersPage extends StatelessWidget {
+class ShopOrdersPage extends StatefulWidget {
   const ShopOrdersPage({super.key});
+  @override
+  State<ShopOrdersPage> createState() => _ShopOrdersPageState();
+}
+
+class _ShopOrdersPageState extends State<ShopOrdersPage> {
+  final Set<String> accepting = {};
+  late final Future<ShopProfile?> shopFuture;
+  Timer? clock;
+
+  @override
+  void initState() {
+    super.initState();
+    shopFuture = ShopStore.load();
+    clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    clock?.cancel();
+    super.dispose();
+  }
 
   Future<void> _accept(
     BuildContext context,
     DocumentReference<Map<String, dynamic>> ref,
     Map<String, dynamic> data,
   ) async {
+    if (accepting.contains(ref.id)) return;
+    setState(() => accepting.add(ref.id));
+    try {
     final price = (data['price'] as num?)?.toInt() ?? 0;
     final commission = (data['commission'] as num?)?.toInt() ?? 0;
     final agreed = await showDialog<bool>(
@@ -69,13 +95,22 @@ class ShopOrdersPage extends StatelessWidget {
         );
       }
     }
+    } finally {
+      if (mounted) setState(() => accepting.remove(ref.id));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<ShopProfile?>(
-      future: ShopStore.load(),
+      future: shopFuture,
       builder: (context, shopSnap) {
+        if (shopSnap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (shopSnap.hasError) {
+          return const Scaffold(body: Center(child: Text('تعذر تحميل حساب المحل')));
+        }
         final shop = shopSnap.data;
         if (shop == null)
           return const Scaffold(
@@ -91,6 +126,9 @@ class ShopOrdersPage extends StatelessWidget {
                   .where('shopId', isEqualTo: shop.id)
                   .snapshots(),
               builder: (context, snap) {
+                if (snap.hasError) {
+                  return const Center(child: Text('تعذر تحميل الطلبات. تحقق من الاتصال'));
+                }
                 if (!snap.hasData)
                   return const Center(child: CircularProgressIndicator());
                 final docs = snap.data!.docs.toList()
@@ -108,6 +146,10 @@ class ShopOrdersPage extends StatelessWidget {
                     var status = '${x['status'] ?? ''}';
                     if (status.isEmpty)
                       status = x['completed'] == true ? 'completed' : 'new';
+                    if (!['completed', 'cancelled', 'expired'].contains(status) &&
+                        x['expiresAt'] != null && !DateTime.now().isBefore(opDate(x['expiresAt']))) {
+                      status = 'expired';
+                    }
                     return Card(
                       child: ListTile(
                         title: Text(
@@ -123,7 +165,7 @@ class ShopOrdersPage extends StatelessWidget {
                                 (['accepted', 'on_the_way'].contains(status) &&
                                     x['acceptedPrice'] == null)
                             ? FilledButton(
-                                onPressed: () =>
+                                onPressed: accepting.contains(d.id) ? null : () =>
                                     _accept(context, d.reference, x),
                                 child: const Text('قبول'),
                               )

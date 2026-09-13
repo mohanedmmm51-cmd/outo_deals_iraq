@@ -15,7 +15,7 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - name: Test product matching and order confirmation
-        run: flutter test test/offer_products_test.dart test/order_confirmation_test.dart
+      - name: Test marketplace business rules
+        run: flutter test
       - name: Build Android debug APK
         run: flutter build apk --debug -v

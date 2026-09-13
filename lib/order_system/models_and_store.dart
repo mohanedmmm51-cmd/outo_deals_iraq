@@ -237,6 +237,8 @@ class OrderStore {
         refreshed.add(owned);
       }
     }
+    // Older orders remain in history even when only the latest 100 are refreshed.
+    refreshed.addAll(local.skip(100));
     refreshed.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     await _saveLocal(refreshed);
     return refreshed;

@@ -33,45 +33,74 @@ class OrderActionsPage extends StatefulWidget {
 class _OrderActionsPageState extends State<OrderActionsPage> {
   final note = TextEditingController();
 
-  Future<void> _setStatus(String status) async {
-    final ref = FirebaseFirestore.instance
-        .collection('orders')
-        .doc(widget.orderCode);
-    await ref.set({
-      'status': status,
-      'statusUpdatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+  bool busy = false;
+  Timer? _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _runAction(Future<void> Function() action) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      await action();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString().replaceFirst('Bad state: ', '')),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _setStatus(String status) => _runAction(() async {
+    final db = FirebaseFirestore.instance;
+    final ref = db.collection('orders').doc(widget.orderCode);
+    await db.runTransaction<void>((tx) async {
+      final data = (await tx.get(ref)).data();
+      if (data == null) throw StateError('الطلب غير موجود');
+      final reason = orderTransitionError(
+        current: '${data['status'] ?? 'new'}',
+        next: status,
+        completed: data['completed'] == true,
+        termsAccepted: data['acceptedAt'] != null &&
+            data['acceptedPrice'] == data['price'] &&
+            data['acceptedCommission'] == data['commission'],
+        expiresAt: data['expiresAt'] == null ? null : opDate(data['expiresAt']),
+        now: DateTime.now(),
+      );
+      if (reason != null) throw StateError(reason);
+      tx.update(ref, {
+        'status': status,
+        'statusUpdatedAt': FieldValue.serverTimestamp(),
+        if (status == 'cancelled') 'cancelledAt': FieldValue.serverTimestamp(),
+      });
+    });
     await AuditLogService.record(
-      action: 'order_status_$status',
-      targetType: 'order',
-      targetId: widget.orderCode,
+      action: 'order_status_$status', targetType: 'order', targetId: widget.orderCode,
     );
-  }
+  });
 
-  Future<void> _cancel() async {
-    await _setStatus('cancelled');
-    await FirebaseFirestore.instance
-        .collection('orders')
-        .doc(widget.orderCode)
-        .set({
-          'cancelledAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-  }
+  Future<void> _cancel() => _setStatus('cancelled');
 
-  Future<void> _addNote() async {
+  Future<void> _addNote() => _runAction(() async {
     final text = note.text.trim();
     if (text.isEmpty) return;
-    await FirebaseFirestore.instance
-        .collection('orders')
-        .doc(widget.orderCode)
-        .collection('notes')
-        .add({
-          'text': text,
-          'actorUid': FirebaseAuth.instance.currentUser?.uid ?? '',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-    note.clear();
-  }
+    await FirebaseFirestore.instance.collection('orders').doc(widget.orderCode)
+        .collection('notes').add({
+      'text': text,
+      'actorUid': FirebaseAuth.instance.currentUser?.uid ?? '',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    if (mounted) note.clear();
+  });
 
   Future<void> _share(Map<String, dynamic> data) async {
     final status =
@@ -92,9 +121,11 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
           (await FirebaseFirestore.instance
                   .collection('orders')
                   .doc(widget.orderCode)
-                  .get())
+                  .get(const GetOptions(source: Source.server)))
               .data();
       if (current == null ||
+          current['completed'] == true ||
+          (current['expiresAt'] != null && !DateTime.now().isBefore(opDate(current['expiresAt']))) ||
           !['accepted', 'on_the_way'].contains(current['status']) ||
           current['acceptedPrice'] != current['price'] ||
           current['acceptedCommission'] != current['commission'] ||
@@ -162,6 +193,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
 
   @override
   void dispose() {
+    _clock?.cancel();
     note.dispose();
     super.dispose();
   }
@@ -178,6 +210,9 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: ref.snapshots(),
           builder: (context, snap) {
+            if (snap.hasError) {
+              return const Center(child: Text('تعذر تحميل الطلب. تحقق من الاتصال'));
+            }
             if (!snap.hasData)
               return const Center(child: CircularProgressIndicator());
             final data = snap.data!.data();
@@ -189,7 +224,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
               status = data['completed'] == true ? 'completed' : 'new';
             final expires = opDate(data['expiresAt']);
             if (expires.millisecondsSinceEpoch > 0 &&
-                DateTime.now().isAfter(expires) &&
+                !DateTime.now().isBefore(expires) &&
                 status != 'completed' &&
                 status != 'cancelled') {
               status = 'expired';
@@ -259,14 +294,14 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: termsAccepted && status == 'accepted'
+                    onPressed: !busy && termsAccepted && status == 'accepted'
                         ? () => _setStatus('on_the_way')
                         : null,
                     icon: const Icon(Icons.directions_car),
                     label: const Text('أنا بالطريق للمحل'),
                   ),
                   TextButton.icon(
-                    onPressed: _cancel,
+                    onPressed: busy ? null : _cancel,
                     icon: const Icon(Icons.cancel),
                     label: const Text('إلغاء الطلب'),
                   ),
@@ -297,6 +332,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                     Expanded(
                       child: TextField(
                         controller: note,
+                        enabled: !busy,
                         decoration: const InputDecoration(
                           hintText: 'اكتب ملاحظة',
                           border: OutlineInputBorder(),
@@ -305,7 +341,7 @@ class _OrderActionsPageState extends State<OrderActionsPage> {
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      onPressed: _addNote,
+                      onPressed: busy ? null : _addNote,
                       icon: const Icon(Icons.send),
                     ),
                   ],
