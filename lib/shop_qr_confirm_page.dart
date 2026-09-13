@@ -109,28 +109,18 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
       handling = true;
       message = null;
     });
-    await scanner.stop();
-
     try {
-      final found = await OrderStore.findByCode(code);
+      await scanner.stop();
+      final found = await OrderStore.findByCode(code, requireServer: true);
       if (!mounted) return;
       if (found == null) {
         setState(() => message = 'الكود غير موجود');
         await scanner.start();
         return;
       }
-      if (found.shopId.isNotEmpty && found.shopId != widget.shop.id) {
-        setState(() => message = 'هذا الطلب مخصص لمحل آخر');
-        await scanner.start();
-        return;
-      }
-      if (found.completed) {
-        setState(() => message = 'هذا الطلب منفذ مسبقاً');
-        await scanner.start();
-        return;
-      }
-      if (found.status == 'cancelled' || found.status == 'expired') {
-        setState(() => message = 'هذا الطلب ملغي أو منتهي الصلاحية');
+      final reason = found.confirmationBlockReason(widget.shop.id);
+      if (reason != null) {
+        setState(() => message = reason);
         await scanner.start();
         return;
       }
@@ -139,7 +129,7 @@ class _ShopQrConfirmPageState extends State<ShopQrConfirmPage> {
       });
     } catch (e) {
       if (mounted) {
-        setState(() => message = e.toString());
+        setState(() => message = e.toString().replaceFirst('Bad state: ', ''));
         await scanner.start();
       }
     } finally {

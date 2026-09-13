@@ -54,6 +54,23 @@ class AppOrder {
     this.productId = '',
   });
 
+  String? confirmationBlockReason(String confirmingShopId, {DateTime? now}) {
+    if (confirmingShopId.isEmpty) return 'سجل دخول المحل أولاً';
+    if (shopId.isNotEmpty && shopId != confirmingShopId) {
+      return 'هذا الطلب مخصص لمحل آخر';
+    }
+    if (completed || status == 'completed') return 'هذا الطلب منفذ مسبقاً';
+    if (status == 'cancelled') return 'هذا الطلب ملغي';
+    if (status == 'expired' ||
+        (expiresAt != null && !(now ?? DateTime.now()).isBefore(expiresAt!))) {
+      return 'انتهت صلاحية كود الطلب';
+    }
+    if (status != 'accepted' && status != 'on_the_way') {
+      return 'لا يمكن تنفيذ الطلب قبل موافقة المحل على السعر والعمولة';
+    }
+    return null;
+  }
+
   AppOrder copyWith({
     bool? completed,
     DateTime? completedAt,
@@ -339,17 +356,32 @@ class OrderStore {
     return order;
   }
 
-  static Future<AppOrder?> findByCode(String code) async {
+  static Future<AppOrder?> findByCode(
+    String code, {
+    bool requireServer = false,
+  }) async {
     final normalized = normalizeOrderCode(code);
     if (normalized.isEmpty) return null;
     try {
-      final doc = await _remote.doc(normalized).get();
+      final doc = await _remote.doc(normalized).get(
+        GetOptions(source: requireServer ? Source.server : Source.serverAndCache),
+      );
       if (doc.exists && doc.data() != null) {
         final order = AppOrder.fromFirestore(doc.data()!);
-        await _upsertLocal(order);
+        if (!requireServer) await _upsertLocal(order);
         return order;
       }
-    } catch (_) {}
+      if (requireServer) return null;
+    } on FirebaseException catch (e) {
+      if (requireServer) {
+        if (e.code == 'permission-denied') {
+          throw StateError('تعذر الوصول للطلب. تأكد من دخول حساب المحل الصحيح');
+        }
+        throw StateError('تعذر فحص الكود. تأكد من الإنترنت وحاول مرة ثانية');
+      }
+    } catch (_) {
+      if (requireServer) rethrow;
+    }
     final orders = await _loadLocal();
     for (final order in orders) {
       if (order.code.toUpperCase() == normalized) return order;
@@ -372,28 +404,8 @@ class OrderStore {
         final snap = await tx.get(docRef);
         if (!snap.exists || snap.data() == null) return null;
         final current = AppOrder.fromFirestore(snap.data()!);
-        if (current.shopId.isNotEmpty && current.shopId != shopId) {
-          throw StateError('هذا الطلب مخصص لمحل آخر');
-        }
-        if (current.status != 'accepted' &&
-            current.status != 'on_the_way' &&
-            !current.completed) {
-          throw StateError(
-            'لا يمكن تنفيذ الطلب قبل موافقة المحل على السعر والعمولة',
-          );
-        }
-        if (current.status == 'cancelled') throw StateError('هذا الطلب ملغي');
-        if (current.status == 'expired') {
-          throw StateError('انتهت صلاحية كود الطلب');
-        }
-        if (current.expiresAt != null &&
-            DateTime.now().isAfter(current.expiresAt!) &&
-            !current.completed) {
-          throw StateError('انتهت صلاحية كود الطلب');
-        }
-        if (current.completed) {
-          throw StateError('هذا الطلب منفذ مسبقاً ولا يمكن تسجيله مرة ثانية');
-        }
+        final blockReason = current.confirmationBlockReason(shopId);
+        if (blockReason != null) throw StateError(blockReason);
 
         final shopRef = db.collection('shops').doc(shopId);
         final shopSnap = await tx.get(shopRef);

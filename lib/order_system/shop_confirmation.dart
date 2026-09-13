@@ -26,39 +26,57 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
   }
 
   Future<void> _search() async {
+    if (busy) return;
     FocusScope.of(context).unfocus();
+    final code = normalizeOrderCode(controller.text);
     setState(() {
       busy = true;
       message = null;
       found = null;
     });
-
-    final code = normalizeOrderCode(controller.text);
-
-    final result = await OrderStore.findByCode(code);
-    if (!mounted) return;
-    setState(() {
-      busy = false;
-      found = result;
-      if (result == null) message = 'الكود غير موجود';
-    });
+    try {
+      if (!RegExp(r'^([0-9]{8}|ADI-[0-9]{10})$').hasMatch(code)) {
+        throw StateError('أدخل كود الطلب المكوّن من 8 أرقام');
+      }
+      final currentShop = await ShopStore.load();
+      if (!mounted) return;
+      if (currentShop == null) throw StateError('سجل دخول المحل أولاً');
+      final result = await OrderStore.findByCode(code, requireServer: true);
+      if (!mounted) return;
+      setState(() {
+        shop = currentShop;
+        final reason = result?.confirmationBlockReason(currentShop.id);
+        // Never display another shop's order details.
+        found = result != null &&
+                (result.shopId.isEmpty || result.shopId == currentShop.id)
+            ? result
+            : null;
+        message = result == null ? 'الكود غير موجود' : reason;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => message = e.toString().replaceFirst('Bad state: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   Future<void> _confirm() async {
-    if (found == null) return;
-    final currentShop = await ShopStore.load();
-    if (currentShop == null) {
-      if (mounted) setState(() => message = 'سجل دخول المحل أولاً');
-      return;
-    }
-    if (found!.shopId.isNotEmpty && found!.shopId != currentShop.id) {
-      setState(() => message = 'هذا الطلب مخصص لمحل آخر');
-      return;
-    }
-    setState(() => busy = true);
+    final current = found;
+    if (current == null || busy) return;
+    setState(() {
+      busy = true;
+      message = null;
+    });
     try {
+      final currentShop = await ShopStore.load();
+      if (!mounted) return;
+      if (currentShop == null) throw StateError('سجل دخول المحل أولاً');
+      final reason = current.confirmationBlockReason(currentShop.id);
+      if (reason != null) throw StateError(reason);
       final result = await OrderStore.confirm(
-        found!.code,
+        current.code,
         shopId: currentShop.id,
         shopName: currentShop.name,
       );
@@ -121,6 +139,11 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
           const SizedBox(height: 12),
           TextField(
             controller: controller,
+            enabled: !busy,
+            onChanged: (_) => setState(() {
+              found = null;
+              message = null;
+            }),
             keyboardType: TextInputType.number,
             textDirection: TextDirection.ltr,
             decoration: const InputDecoration(
@@ -179,7 +202,7 @@ class _ShopConfirmOrderPageState extends State<ShopConfirmOrderPage> {
                         avatar: Icon(Icons.check_circle),
                         label: Text('تم تنفيذ الطلب'),
                       )
-                    else
+                    else if (found!.confirmationBlockReason(shop?.id ?? '') == null)
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
