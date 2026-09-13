@@ -1,3 +1,4 @@
+import 'marketplace_rules.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -16,10 +17,7 @@ String _money(int n) => n.toString().replaceAllMapped(
   (m) => '${m[1]},',
 );
 
-DateTime _weekStart(DateTime value) {
-  final d = DateTime(value.year, value.month, value.day);
-  return d.subtract(Duration(days: d.weekday - DateTime.monday));
-}
+DateTime _weekStart(DateTime value) => iraqWeekStart(value);
 
 class ShopDashboardPage extends StatefulWidget {
   const ShopDashboardPage({super.key});
@@ -213,7 +211,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
               (sum, d) =>
                   sum + ((d.data()['commission'] as num?)?.toInt() ?? 0),
             );
-            final dueCommission = thisWeek
+            final dueCommission = completed
                 .where((d) => '${d.data()['settlementStatus'] ?? ''}' != 'paid')
                 .fold<int>(
                   0,
@@ -352,7 +350,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                   ),
                   const SizedBox(height: 10),
                   _statCard(
-                    'العمولة المستحقة لهذا الأسبوع',
+                    'إجمالي العمولة غير المسددة',
                     '${_money(dueCommission)} د.ع',
                     Icons.account_balance_wallet,
                     highlight: true,

@@ -1,3 +1,5 @@
+import 'marketplace_rules.dart';
+import 'settlement_payment.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -11,13 +13,8 @@ String _money(int n) => n.toString().replaceAllMapped(
       (m) => '${m[1]},',
     );
 
-DateTime _settlementWeekStart(DateTime value) {
-  final d = DateTime(value.year, value.month, value.day);
-  return d.subtract(Duration(days: d.weekday - DateTime.monday));
-}
-
-String _settlementWeekKey(DateTime start) =>
-    '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+DateTime _settlementWeekStart(DateTime value) => iraqWeekStart(value);
+String _settlementWeekKey(DateTime start) => iraqWeekKey(start);
 
 DateTime _asDate(dynamic value) {
   if (value is Timestamp) return value.toDate();
@@ -174,6 +171,7 @@ class _ShopsTab extends StatelessWidget {
   Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('shops').snapshots(),
         builder: (context, snap) {
+          if (snap.hasError) return const Center(child: Text('تعذر تحميل البيانات. تحقق من الاتصال'));
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           return ListView(padding: const EdgeInsets.all(12), children: snap.data!.docs.map((d) {
             final x = d.data();
@@ -229,6 +227,7 @@ class _OffersTab extends StatelessWidget {
           if (snap.hasError) {
             return const Center(child: Text('تعذر تحميل العروض. حاول مرة ثانية.'));
           }
+          if (snap.hasError) return const Center(child: Text('تعذر تحميل البيانات. تحقق من الاتصال'));
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           if (snap.data!.docs.isEmpty) {
             return const Center(child: Text('ماكو عروض للمراجعة حالياً'));
@@ -265,7 +264,8 @@ class _SettlementsTabState extends State<_SettlementsTab> {
       final ordersSnap = await db.collection('orders').where('completed', isEqualTo: true).get();
       final unassigned = ordersSnap.docs.where((d) {
         final x = d.data();
-        return '${x['settlementId'] ?? ''}'.isEmpty &&
+        return x['settlementStatus'] != 'paid' &&
+            '${x['settlementId'] ?? ''}'.isEmpty &&
             (x['status'] == 'completed' || x['completed'] == true);
       }).toList();
 
@@ -294,7 +294,12 @@ class _SettlementsTabState extends State<_SettlementsTab> {
       var createdOrUpdated = 0;
       var attachedOrders = 0;
 
-      for (final entry in grouped.entries) {
+      for (final entry in grouped.entries.expand((entry) sync* {
+        for (var offset = 0; offset < entry.value.length; offset += 400) {
+          final end = offset + 400 < entry.value.length ? offset + 400 : entry.value.length;
+          yield MapEntry(entry.key, entry.value.sublist(offset, end));
+        }
+      })) {
         final baseId = entry.key;
         final candidates = entry.value;
         if (candidates.isEmpty) continue;
@@ -307,10 +312,13 @@ class _SettlementsTabState extends State<_SettlementsTab> {
 
           DocumentReference<Map<String, dynamic>> statementRef = baseRef;
           Map<String, dynamic>? existingData = baseData;
-          if (baseSnap.exists && '${baseData?['status'] ?? ''}' == 'paid') {
-            final lateId = '${baseId}_late_${DateTime.now().microsecondsSinceEpoch}';
-            statementRef = db.collection('settlements').doc(lateId);
-            existingData = null;
+          var part = 0;
+          while (existingData != null &&
+              (existingData['status'] != 'pending' ||
+                  ((existingData['orderCodes'] as List?)?.length ?? 0) + candidates.length > 450)) {
+            part++;
+            statementRef = db.collection('settlements').doc('${baseId}_part_$part');
+            existingData = (await tx.get(statementRef)).data();
           }
 
           final freshOrders = <DocumentSnapshot<Map<String, dynamic>>>[];
@@ -318,7 +326,8 @@ class _SettlementsTabState extends State<_SettlementsTab> {
             final fresh = await tx.get(candidate.reference);
             final data = fresh.data();
             if (!fresh.exists || data == null) continue;
-            if (data['completed'] != true && data['status'] != 'completed') continue;
+            if (data['completed'] != true || data['status'] != 'completed' ||
+                data['settlementStatus'] == 'paid') continue;
             if ('${data['settlementId'] ?? ''}'.isNotEmpty) continue;
             if ('${data['shopId'] ?? ''}' != '${candidates.first.data()['shopId'] ?? ''}') continue;
             final completedAt = _asDate(data['completedAt']);
@@ -393,7 +402,7 @@ class _SettlementsTabState extends State<_SettlementsTab> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تم تحديث $createdOrUpdated كشف وربط $attachedOrders طلب بشكل ذري وآمن')),
+          SnackBar(content: Text('تم تحديث $createdOrUpdated كشف وربط $attachedOrders طلب')),
         );
       }
     } catch (e) {
@@ -407,83 +416,11 @@ class _SettlementsTabState extends State<_SettlementsTab> {
     }
   }
 
-  Future<void> _markPaid(DocumentSnapshot<Map<String, dynamic>> d) async {
-    final db = FirebaseFirestore.instance;
-    await db.runTransaction<void>((tx) async {
-      final freshStatement = await tx.get(d.reference);
-      final x = freshStatement.data();
-      if (!freshStatement.exists || x == null) {
-        throw StateError('كشف التسوية غير موجود');
-      }
-      if ('${x['status'] ?? ''}' == 'paid') return;
-      if ('${x['status'] ?? ''}' != 'pending') {
-        throw StateError('حالة كشف التسوية غير صالحة للدفع');
-      }
-
-      final codes = (x['orderCodes'] as List?)?.map((e) => '$e').toSet().toList() ?? <String>[];
-      if (codes.isEmpty) throw StateError('كشف التسوية ما بيه طلبات');
-      if (codes.length > 450) {
-        throw StateError('الكشف كبير جداً للدفع الذري. قسّمه إلى أكثر من كشف');
-      }
-
-      var verifiedSales = 0;
-      var verifiedCommission = 0;
-      final verifiedOrders = <DocumentReference<Map<String, dynamic>>>[];
-      for (final code in codes) {
-        final ref = db.collection('orders').doc(code);
-        final order = await tx.get(ref);
-        final data = order.data();
-        if (!order.exists || data == null) {
-          throw StateError('أحد طلبات الكشف غير موجود: $code');
-        }
-        if (data['completed'] != true && data['status'] != 'completed') {
-          throw StateError('الكشف يحتوي طلب غير منفذ: $code');
-        }
-        if ('${data['settlementId'] ?? ''}' != d.id) {
-          throw StateError('الطلب $code مو مربوط بهذا الكشف');
-        }
-        if ('${data['shopId'] ?? ''}' != '${x['shopId'] ?? ''}') {
-          throw StateError('الكشف يحتوي طلب تابع لمحل مختلف');
-        }
-        verifiedSales += (data['price'] as num?)?.toInt() ?? 0;
-        verifiedCommission += (data['commission'] as num?)?.toInt() ?? 0;
-        verifiedOrders.add(ref);
-      }
-
-      final storedSales = (x['totalSales'] as num?)?.toInt() ?? 0;
-      final storedCommission = (x['totalCommission'] as num?)?.toInt() ?? 0;
-      final storedCount = (x['orderCount'] as num?)?.toInt() ?? 0;
-      if (verifiedSales != storedSales ||
-          verifiedCommission != storedCommission ||
-          verifiedOrders.length != storedCount) {
-        throw StateError('مجموع الكشف ما يطابق الطلبات المنفذة. أعد إنشاء/تحديث الكشف أولاً');
-      }
-
-      tx.update(d.reference, {
-        'status': 'paid',
-        'paidAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'verifiedAt': FieldValue.serverTimestamp(),
-      });
-      for (final ref in verifiedOrders) {
-        tx.update(ref, {'settlementStatus': 'paid'});
-      }
-    });
-
-    final fresh = await d.reference.get();
-    final x = fresh.data() ?? <String, dynamic>{};
-    await AuditLogService.record(
-      action: 'settlement_paid',
-      targetType: 'settlement',
-      targetId: d.id,
-      details: '${x['totalCommission'] ?? 0}',
-    );
-  }
-
   @override
   Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('settlements').snapshots(),
         builder: (context, snap) {
+          if (snap.hasError) return const Center(child: Text('تعذر تحميل البيانات. تحقق من الاتصال'));
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           final cards = snap.data!.docs.map((d) {
             final x = d.data();
@@ -492,22 +429,7 @@ class _SettlementsTabState extends State<_SettlementsTab> {
               title: Text('${x['shopName'] ?? x['shopId'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text('طلبات: ${x['orderCount'] ?? 0}\nالعمولة: ${_money((x['totalCommission'] as num?)?.toInt() ?? 0)} د.ع • ${pending ? 'بانتظار الدفع' : 'تم الدفع'}'),
               isThreeLine: true,
-              trailing: pending ? FilledButton(onPressed: () async {
-                try {
-                  await _markPaid(d);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('تم التحقق من الكشف وتسجيل الدفع')),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('تعذر تسجيل الدفع: $e')),
-                    );
-                  }
-                }
-              }, child: const Text('تم الدفع')) : const Icon(Icons.done_all, color: Colors.green),
+              trailing: pending ? SettlementPaidButton(key: ValueKey(d.id), reference: d.reference) : const Icon(Icons.done_all, color: Colors.green),
             ));
           }).toList();
           return ListView(
@@ -522,7 +444,7 @@ class _SettlementsTabState extends State<_SettlementsTab> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'الكشوف محمية للإدارة فقط، وتنربط بالطلبات داخل Transaction حتى ما يتكرر نفس الطلب بكشفين. وقبل تسجيل الدفع ينراجع عدد الطلبات والمبيعات والعمولة من الطلبات المنفذة نفسها.',
+                'كل كشف يجمع مبيعات محل واحد حسب أسبوع التنفيذ بتوقيت العراق. قبل تسجيل الدفع نتحقق من عدد الطلبات والمبيعات والعمولة، ولا نحتسب الطلب المدفوع مرة ثانية.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
