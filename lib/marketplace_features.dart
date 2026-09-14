@@ -1,3 +1,4 @@
+import 'manual_payments.dart';
 import 'marketplace_rules.dart';
 import 'settlement_payment.dart';
 import 'dart:async';
@@ -282,6 +283,8 @@ class AdminDashboardPage extends StatelessWidget {
                         Row(children: [Expanded(child: _adminStat(context, 'الطلبات', '${orders.length}', Icons.receipt_long, const OrdersManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'المنفذة', '${completed.length}', Icons.check_circle, const OrdersManagementPage(initialStatus: 'completed')))]),
                         const SizedBox(height: 8),
                         Row(children: [Expanded(child: _adminStat(context, 'المحلات', '${shops.length}', Icons.store, const AdminShopsManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'عمولات معلقة', '${_money(due)} د.ع', Icons.account_balance_wallet, const AdminPendingCommissionsPage()))]),
+                        const SizedBox(height: 8),
+                        _adminStat(context, 'تسديدات المحلات', 'بيانات التحويل ومراجعة الوصولات', Icons.payments, const AdminManualPaymentsPage()),
                         const SizedBox(height: 8),
                         _adminStat(context, 'إدارة العروض', 'مراجعة ونشر', Icons.local_offer, const AdminOffersPage()),
                         const SizedBox(height: 8),
