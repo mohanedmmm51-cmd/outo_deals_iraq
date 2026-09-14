@@ -766,6 +766,8 @@ service cloud.firestore {
       }
     }
 
+    // Deploy the numeric-code preflight rule independently of Functions.
+    // Signed-in customers must be able to check that a new code is unused.
     match /orders/{code} {
       allow create: if validTrustedNewOrder(code);
       allow get: if (signedIn() && !exists(/databases/$(database)/documents/orders/$(code)))
