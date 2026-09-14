@@ -1,3 +1,4 @@
+import 'manual_payments.dart';
 import 'marketplace_rules.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -356,6 +357,14 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                     highlight: true,
                   ),
                   const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => ShopManualPaymentPage(shop: shop),
+                    )),
+                    icon: const Icon(Icons.payments),
+                    label: const Text('تسديد المستحقات'),
+                  ),
+                  const SizedBox(height: 12),
                   const Card(
                     child: ListTile(
                       leading: Icon(Icons.verified_user),
@@ -564,3 +573,4 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
         DateTime.fromMillisecondsSinceEpoch(0);
   }
 }
+
