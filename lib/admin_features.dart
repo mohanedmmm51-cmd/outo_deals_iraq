@@ -1,3 +1,4 @@
+import 'manual_payments.dart';
 import 'marketplace_rules.dart';
 import 'settlement_payment.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -436,6 +437,14 @@ class _SettlementsTabState extends State<_SettlementsTab> {
             padding: const EdgeInsets.all(12),
             children: [
               FilledButton.icon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const AdminManualPaymentsPage(),
+                )),
+                icon: const Icon(Icons.receipt_long),
+                label: const Text('تسديدات المحلات وبيانات التحويل'),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
                 onPressed: generating ? null : _generateStatements,
                 icon: generating
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -454,3 +463,4 @@ class _SettlementsTabState extends State<_SettlementsTab> {
         },
       );
 }
+

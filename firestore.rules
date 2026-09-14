@@ -850,6 +850,48 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    function validManualPaymentRequest(id) {
+      let d = request.resource.data;
+      return isShop() && shopId() == id
+        && d.keys().hasOnly(['shopId', 'shopName', 'ownerUid', 'amount',
+          'orderCodes', 'reference', 'receiptBase64', 'instructions', 'status', 'submittedAt'])
+        && d.shopId == id && d.ownerUid == request.auth.uid
+        && d.shopName == get(/databases/$(database)/documents/shops/$(id)).data.name
+        && d.amount is int && d.amount > 0
+        && d.orderCodes is list && d.orderCodes.size() > 0 && d.orderCodes.size() <= 200
+        && d.reference is string && d.reference.size() > 0 && d.reference.size() <= 120
+        && d.receiptBase64 is string && d.receiptBase64.size() > 0 && d.receiptBase64.size() <= 400000
+        && d.instructions is string && d.instructions.size() > 0 && d.instructions.size() <= 2000
+        && d.instructions == get(/databases/$(database)/documents/payment_settings/manual).data.instructions
+        && d.status == 'pending' && d.submittedAt == request.time;
+    }
+    match /payment_settings/{id} {
+      allow read: if isAdmin() || isShop();
+      allow create, update: if isAdmin() && id == 'manual'
+        && request.resource.data.keys().hasOnly(['instructions', 'updatedAt'])
+        && request.resource.data.instructions is string
+        && request.resource.data.instructions.size() > 0
+        && request.resource.data.instructions.size() <= 2000
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    match /payment_requests/{id} {
+      // The shop can read its missing document before its first submission.
+      allow get: if isAdmin() || (isShop() && shopId() == id);
+      allow list: if isAdmin();
+      allow create: if validManualPaymentRequest(id);
+      allow update: if isAdmin() || (
+        resource.data.status in ['approved', 'rejected']
+        && validManualPaymentRequest(id)
+      );
+      allow delete: if false;
+    }
+    match /payment_history/{id} {
+      allow read: if isAdmin() || (isShop() && resource.data.shopId == shopId());
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     match /settlements/{id} {
       allow get: if isAdmin() || (
         isShop()
@@ -1063,3 +1105,4 @@ service cloud.firestore {
     }
   }
 }
+
