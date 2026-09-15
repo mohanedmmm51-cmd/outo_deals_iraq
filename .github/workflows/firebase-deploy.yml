@@ -89,11 +89,9 @@ jobs:
           cp -R privacy_site/privacy build/web/privacy
           cp -R privacy_site/deletion build/web/deletion
 
-      - name: Verify Firebase Web app registration
+      - name: Prepare Firebase Web app configuration
         if: steps.credentials.outputs.configured == 'true'
-        run: |
-          firebase apps:list WEB --project "${{ steps.firebase.outputs.project_id }}" --json > "$RUNNER_TEMP/firebase-web-apps.json"
-          node -e 'const fs=require("fs");const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!JSON.stringify(data.result).includes(":web:")){console.error("Register a Web app in Firebase Project Settings before deploying.");process.exit(1)}' "$RUNNER_TEMP/firebase-web-apps.json"
+        run: node tools/prepare_web_firebase.cjs "${{ steps.firebase.outputs.project_id }}"
 
       - name: Install catalog seed dependencies
         if: steps.credentials.outputs.configured == 'true' && hashFiles('tools/package.json') != ''

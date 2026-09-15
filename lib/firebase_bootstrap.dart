@@ -3,14 +3,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// Firebase Hosting supplies the configuration for its own project.
+/// Deployment exports public SDK configuration from the selected Firebase Web app.
 /// Native apps continue using their existing platform configuration.
 Future<void> initializeFirebase() async {
   if (!kIsWeb) {
     await Firebase.initializeApp();
     return;
   }
-  final response = await http.get(Uri.base.resolve('/__/firebase/init.json'))
+  final response = await http.get(Uri.base.resolve('/firebase-config.json'))
       .timeout(const Duration(seconds: 15));
   if (response.statusCode != 200) {
     throw StateError('Firebase web configuration is unavailable');
