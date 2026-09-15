@@ -62,3 +62,19 @@ jobs:
             echo "Android build failed with exit code $code"
             exit "$code"
           fi
+
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build web --release --pwa-strategy=none
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auto-deals-iraq-web
+          path: build/web
+          if-no-files-found: error

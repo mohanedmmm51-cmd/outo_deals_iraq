@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'firebase_bootstrap.dart';
 
 import 'advanced_features.dart';
 import 'draggable_shop_shortcuts.dart';
@@ -12,9 +14,19 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await Firebase.initializeApp();
+    await initializeFirebase();
   } catch (e) {
     debugPrint('Firebase init failed: $e');
+    if (kIsWeb) {
+      runApp(const MaterialApp(home: Scaffold(body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Center(child: Padding(padding: EdgeInsets.all(24), child: Text(
+          'تعذر الاتصال بالتطبيق. تحقق من الإنترنت وأعد تحميل الصفحة. إذا استمرت المشكلة تواصل مع الإدارة.',
+          textAlign: TextAlign.center,
+        ))),
+      ))));
+      return;
+    }
   }
 
   if (Firebase.apps.isNotEmpty) {
