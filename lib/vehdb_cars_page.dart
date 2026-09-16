@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:http/http.dart' as http;
 
 import 'package:flutter/material.dart';
 
@@ -12,25 +12,16 @@ class _VehDbApi {
       'https://auto-deals-vehdb.mohanedmmm51.workers.dev';
 
   Future<dynamic> get(String path) async {
-    final client = HttpClient();
-    try {
-      final request = await client.getUrl(Uri.parse('$base$path'));
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(
-          'خدمة السيارات HTTP ${response.statusCode}${body.isNotEmpty ? ': $body' : ''}',
-        );
-      }
-
-      if (body.trim().isEmpty) return {};
-      return jsonDecode(body);
-    } finally {
-      client.close(force: true);
+    final response = await http.get(
+      Uri.parse('$base$path'),
+      headers: {'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 20));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('خدمة السيارات HTTP ${response.statusCode}');
     }
+    final body = utf8.decode(response.bodyBytes);
+    if (body.trim().isEmpty) return {};
+    return jsonDecode(body);
   }
 
   List<String> _strings(dynamic json) {
@@ -231,7 +222,7 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
     if (text.contains('404')) {
       return 'خدمة السيارات غير متاحة حاليًا.';
     }
-    return text;
+    return 'تعذّر جلب بيانات السيارات. تحقق من الاتصال وحاول مرة ثانية.';
   }
 
   Future<void> _loadMakes() async {
@@ -354,7 +345,16 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
                 color: Colors.red.shade50,
                 child: Padding(
                   padding: const EdgeInsets.all(14),
-                  child: Text(error!),
+                  child: Column(
+                    children: [
+                      Text(error!),
+                      if (makes.isEmpty)
+                        TextButton(
+                          onPressed: busy ? null : _loadMakes,
+                          child: const Text('إعادة المحاولة'),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             if (makes.isNotEmpty)

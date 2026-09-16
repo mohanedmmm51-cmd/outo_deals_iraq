@@ -104,29 +104,17 @@ class Api {
       throw Exception('VehDB غير مهيأ. شغّل التطبيق مع VEHDB_TOKEN.');
     }
 
-    final client = HttpClient();
-
-    try {
-      final request = await client.getUrl(Uri.parse('$base$path'));
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${vehDbToken.trim()}',
-      );
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(
-          'VehDB HTTP ${response.statusCode}${body.isNotEmpty ? ': $body' : ''}',
-        );
-      }
-
-      return jsonDecode(body);
-    } finally {
-      client.close(force: true);
+    final response = await http.get(
+      Uri.parse('$base$path'),
+      headers: {
+        'Authorization': 'Bearer ${vehDbToken.trim()}',
+        'Accept': 'application/json',
+      },
+    ).timeout(const Duration(seconds: 20));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('VehDB HTTP ${response.statusCode}');
     }
+    return jsonDecode(utf8.decode(response.bodyBytes));
   }
 
   List<String> strings(dynamic json) {
