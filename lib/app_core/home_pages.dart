@@ -179,13 +179,10 @@ class Home extends StatelessWidget {
                     button(
                       context,
                       Icons.add_business,
-                      'إضافة محل',
-                      'طلب انضمام لأصحاب المحلات',
-                      Colors.white,
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AddShopPage()),
-                      ),
+                      'إضافة محل — قريبًا',
+                      'تسجيل المحلات متوقف مؤقتًا',
+                      Colors.grey.shade100,
+                      null,
                     ),
                     const SizedBox(height: 14),
                     button(
@@ -227,7 +224,7 @@ class Home extends StatelessWidget {
     String title,
     String subtitle,
     Color color,
-    VoidCallback onTap,
+    VoidCallback? onTap,
   ) {
     return InkWell(
       onTap: onTap,
@@ -259,7 +256,8 @@ class Home extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.arrow_back_ios_new, size: 18),
+            if (onTap != null)
+              const Icon(Icons.arrow_back_ios_new, size: 18),
           ],
         ),
       ),

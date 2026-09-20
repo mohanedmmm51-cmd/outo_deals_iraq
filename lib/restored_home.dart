@@ -183,10 +183,10 @@ class _RestoredHomeState extends State<RestoredHome> {
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
                         Icons.add_business,
-                        'إضافة محل',
-                        'طلب انضمام لأصحاب المحلات + تحديد GPS',
-                        Colors.white,
-                        () => _open(const ShopAuthPage()),
+                        'إضافة محل — قريبًا',
+                        'تسجيل المحلات متوقف مؤقتًا',
+                        Colors.grey.shade100,
+                        null,
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
@@ -222,7 +222,7 @@ class RestoredHomeUi {
     String title,
     String subtitle,
     Color color,
-    VoidCallback onTap,
+    VoidCallback? onTap,
   ) {
     return InkWell(
       onTap: onTap,
@@ -248,7 +248,8 @@ class RestoredHomeUi {
                 ],
               ),
             ),
-            const Icon(Icons.arrow_back_ios_new, size: 18),
+            if (onTap != null)
+              const Icon(Icons.arrow_back_ios_new, size: 18),
           ],
         ),
       ),

@@ -117,7 +117,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                     Icon(Icons.storefront, size: 64),
                     SizedBox(height: 8),
                     Text(
-                      'إنشاء حساب المحل',
+                      'إضافة محل — قريبًا',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -125,7 +125,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
                     ),
                     SizedBox(height: 6),
                     Text(
-                      'هذا الحساب يربط الطلبات بالمحل ويحسب العمولة والتسوية الأسبوعية.',
+                      'تسجيل المحلات الجديدة متوقف مؤقتًا.',
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -134,6 +134,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             ),
             const SizedBox(height: 14),
             TextField(
+              enabled: false,
               controller: nameController,
               decoration: const InputDecoration(
                 labelText: 'اسم المحل',
@@ -143,6 +144,7 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             ),
             const SizedBox(height: 12),
             TextField(
+              enabled: false,
               controller: phoneController,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
@@ -154,9 +156,9 @@ class _ShopDashboardPageState extends State<ShopDashboardPage> {
             const SizedBox(height: 14),
             FilledButton.icon(
               style: FilledButton.styleFrom(padding: const EdgeInsets.all(16)),
-              onPressed: _saveProfile,
+              onPressed: null,
               icon: const Icon(Icons.check_circle),
-              label: const Text('إنشاء الحساب'),
+              label: const Text('قريبًا'),
             ),
             if (error != null) ...[
               const SizedBox(height: 12),

@@ -745,10 +745,9 @@ service cloud.firestore {
 
     match /shops/{id} {
       allow read: if true;
-      allow create: if signedIn()
-        && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.approved == false
-        && request.resource.data.status == 'pending';
+      // New shop onboarding is paused until settlement transfers are ready.
+      // Existing shops retain their sign-in, updates and order workflows.
+      allow create: if false;
       allow update: if isAdmin() || (
         signedIn()
         && resource.data.ownerUid == request.auth.uid

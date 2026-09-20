@@ -74,6 +74,10 @@ class _ShopAuthPageState extends State<ShopAuthPage> {
   }
 
   Future<void> _submit() async {
+    if (register) {
+      setState(() => error = 'إضافة محل — قريبًا');
+      return;
+    }
     setState(() {
       busy = true;
       error = null;
@@ -172,8 +176,8 @@ class _ShopAuthPageState extends State<ShopAuthPage> {
               label: Text(register ? 'إنشاء الحساب' : 'تسجيل الدخول'),
             ),
             TextButton(
-              onPressed: busy ? null : () => setState(() => register = !register),
-              child: Text(register ? 'عندي حساب بالفعل' : 'إنشاء حساب محل جديد'),
+              onPressed: null,
+              child: const Text('إنشاء حساب محل جديد — قريبًا'),
             ),
             if (error != null) Text(error!, textAlign: TextAlign.center),
           ],
