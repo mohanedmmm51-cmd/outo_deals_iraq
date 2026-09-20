@@ -23,7 +23,10 @@ void main() {
         .onChanged!('Toyota');
     await tester.pump();
     var models = tester.widget<DropdownButtonFormField<String>>(stringFields.last);
-    expect(models.items!.map((item) => item.value), contains('Camry'));
+    var choices = tester.widget<DropdownButton<String>>(
+      find.byType(DropdownButton<String>).last,
+    ).items!.map((item) => item.value);
+    expect(choices, contains('Camry'));
     expect(find.byType(TextField), findsNothing);
     models.onChanged!('Camry');
     await tester.pump();
@@ -37,8 +40,11 @@ void main() {
         .onChanged!('Kia');
     await tester.pump();
     models = tester.widget<DropdownButtonFormField<String>>(stringFields.last);
-    expect(models.items!.map((item) => item.value), contains('Sportage'));
-    expect(models.items!.map((item) => item.value), isNot(contains('Camry')));
+    choices = tester.widget<DropdownButton<String>>(
+      find.byType(DropdownButton<String>).last,
+    ).items!.map((item) => item.value);
+    expect(choices, contains('Sportage'));
+    expect(choices, isNot(contains('Camry')));
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
     expect(find.text('بحث عن السيارة والفئة'), findsNothing);
     expect(tester.takeException(), isNull);
