@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 
 import 'app_core.dart' as legacy;
+import 'vehicle_catalog.dart';
 
 const _yellow = Color(0xFFFFD400);
 
@@ -23,33 +24,6 @@ class _VehDbApi {
     if (body.trim().isEmpty) return {};
     return jsonDecode(body);
   }
-
-  List<String> _strings(dynamic json) {
-    final data = json is Map ? json['data'] : null;
-    if (data is! List) return [];
-
-    final out = <String>{};
-    for (final item in data) {
-      if (item is String) {
-        final value = item.trim();
-        if (value.isNotEmpty) out.add(value);
-      } else if (item is Map) {
-        final value = item['make'] ?? item['model'] ?? item['name'] ?? item['value'];
-        if (value != null) {
-          final text = value.toString().trim();
-          if (text.isNotEmpty && text != 'null') out.add(text);
-        }
-      }
-    }
-
-    return out.toList()..sort();
-  }
-
-  Future<List<String>> makes() => get('/makes').then(_strings);
-
-  Future<List<String>> models(String make) => get(
-        '/models?make=${Uri.encodeQueryComponent(make)}',
-      ).then(_strings);
 
   Future<List<legacy.Car>> cars(String make, String model, int year) async {
     final json = await get(
@@ -198,29 +172,15 @@ class VehDbCarsPage extends StatefulWidget {
 
 class _VehDbCarsPageState extends State<VehDbCarsPage> {
   final _api = _VehDbApi();
-  final _modelController = TextEditingController();
-  bool manualModel = false;
 
   String? make;
   String? model;
   int? year;
-  List<String> makes = [];
+  final List<String> makes = vehicleCatalog.keys.toList()..sort();
   List<String> models = [];
   List<legacy.Car> cars = [];
   bool busy = false;
   String? error;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadMakes();
-  }
-
-  @override
-  void dispose() {
-    _modelController.dispose();
-    super.dispose();
-  }
 
   String _friendlyError(Object e) {
     final text = e.toString().replaceFirst('Exception: ', '');
@@ -233,53 +193,15 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
     return 'تعذّر جلب بيانات السيارات. تحقق من الاتصال وحاول مرة ثانية.';
   }
 
-  Future<void> _loadMakes() async {
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      final result = await _api.makes();
-      if (!mounted) return;
-      setState(() => makes = result);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => error = _friendlyError(e));
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  Future<void> _loadModels(String value) async {
-    _modelController.clear();
+  void _loadModels(String value) {
     setState(() {
       make = value;
       model = null;
-      manualModel = false;
       year = null;
-      models = [];
+      models = List<String>.of(vehicleCatalog[value] ?? const [])..sort();
       cars = [];
-      busy = true;
       error = null;
     });
-    try {
-      final result = await _api.models(value);
-      if (!mounted) return;
-      setState(() {
-        models = result;
-        manualModel = result.isEmpty;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      // VehDB's model taxonomy can require Pro while filtered car searches
-      // remain available. Let the customer enter a model and use that search.
-      setState(() {
-        manualModel = true;
-        if (!e.toString().contains('HTTP 403')) error = _friendlyError(e);
-      });
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
   }
 
   Future<void> _searchCars() async {
@@ -366,11 +288,6 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
                   child: Column(
                     children: [
                       Text(error!),
-                      if (makes.isEmpty)
-                        TextButton(
-                          onPressed: busy ? null : _loadMakes,
-                          child: const Text('إعادة المحاولة'),
-                        ),
                     ],
                   ),
                 ),
@@ -388,6 +305,7 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
             if (models.isNotEmpty) ...[
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
+                key: ValueKey(make),
                 value: model,
                 isExpanded: true,
                 decoration: _decoration('الموديل'),
@@ -403,29 +321,10 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
                         }),
               ),
             ],
-            if (manualModel) ...[
-              const SizedBox(height: 14),
-              TextField(
-                controller: _modelController,
-                enabled: !busy,
-                textDirection: TextDirection.ltr,
-                autocorrect: false,
-                decoration: _decoration('الموديل').copyWith(
-                  hintText: 'Camry',
-                  helperText: 'اكتب اسم الموديل بالإنكليزي مثل Camry أو Corolla',
-                  helperMaxLines: 2,
-                ),
-                onChanged: (value) => setState(() {
-                  final trimmed = value.trim();
-                  model = trimmed.isEmpty ? null : trimmed;
-                  cars = [];
-                  error = null;
-                }),
-              ),
-            ],
             if (model != null) ...[
               const SizedBox(height: 14),
               DropdownButtonFormField<int>(
+                key: ValueKey('$make/$model'),
                 value: year,
                 isExpanded: true,
                 decoration: _decoration('السنة'),
