@@ -198,6 +198,8 @@ class VehDbCarsPage extends StatefulWidget {
 
 class _VehDbCarsPageState extends State<VehDbCarsPage> {
   final _api = _VehDbApi();
+  final _modelController = TextEditingController();
+  bool manualModel = false;
 
   String? make;
   String? model;
@@ -212,6 +214,12 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
   void initState() {
     super.initState();
     _loadMakes();
+  }
+
+  @override
+  void dispose() {
+    _modelController.dispose();
+    super.dispose();
   }
 
   String _friendlyError(Object e) {
@@ -243,9 +251,11 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
   }
 
   Future<void> _loadModels(String value) async {
+    _modelController.clear();
     setState(() {
       make = value;
       model = null;
+      manualModel = false;
       year = null;
       models = [];
       cars = [];
@@ -255,10 +265,18 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
     try {
       final result = await _api.models(value);
       if (!mounted) return;
-      setState(() => models = result);
+      setState(() {
+        models = result;
+        manualModel = result.isEmpty;
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() => error = _friendlyError(e));
+      // VehDB's model taxonomy can require Pro while filtered car searches
+      // remain available. Let the customer enter a model and use that search.
+      setState(() {
+        manualModel = true;
+        if (!e.toString().contains('HTTP 403')) error = _friendlyError(e);
+      });
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -383,6 +401,26 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
                           year = null;
                           cars = [];
                         }),
+              ),
+            ],
+            if (manualModel) ...[
+              const SizedBox(height: 14),
+              TextField(
+                controller: _modelController,
+                enabled: !busy,
+                textDirection: TextDirection.ltr,
+                autocorrect: false,
+                decoration: _decoration('الموديل').copyWith(
+                  hintText: 'Camry',
+                  helperText: 'اكتب اسم الموديل بالإنكليزي مثل Camry أو Corolla',
+                  helperMaxLines: 2,
+                ),
+                onChanged: (value) => setState(() {
+                  final trimmed = value.trim();
+                  model = trimmed.isEmpty ? null : trimmed;
+                  cars = [];
+                  error = null;
+                }),
               ),
             ],
             if (model != null) ...[
