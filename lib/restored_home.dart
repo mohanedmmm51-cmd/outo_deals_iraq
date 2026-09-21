@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'advanced_features.dart';
@@ -10,7 +12,8 @@ import 'marketplace_features.dart';
 import 'order_system.dart';
 import 'privacy_policy.dart';
 import 'production_features.dart';
-import 'size_request_page.dart';
+import 'product_requests.dart';
+import 'request_notifications.dart';
 import 'vehdb_cars_page.dart';
 
 const restoredYellow = Color(0xFFFFD400);
@@ -23,6 +26,32 @@ class RestoredHome extends StatefulWidget {
 }
 
 class _RestoredHomeState extends State<RestoredHome> {
+  @override
+  void initState() {
+    super.initState();
+    final id = Uri.base.queryParameters['request'];
+    if (id != null && RegExp(r'^[A-Za-z0-9]{20}$').hasMatch(id)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openRequest(id));
+    }
+  }
+
+  Future<void> _openRequest([String? id]) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final profile = uid == null ? null : await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (!mounted) return;
+      final data = profile?.data();
+      final admin = data?['role'] == 'admin' || data?['isAdmin'] == true;
+      if (id != null && Uri.base.queryParameters['audience'] == 'admin' && !admin) {
+        _open(const AdminLoginPage());
+      } else {
+        _open(id == null ? ProductRequestsPage(admin: admin) : ProductRequestDetailPage(id: id, admin: admin));
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر فتح الطلبات. حاول مجدداً.')));
+    }
+  }
+
   void _open(Widget page) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
@@ -38,7 +67,7 @@ class _RestoredHomeState extends State<RestoredHome> {
         _open(const CustomerCartPage());
         return;
       case 3:
-        _open(const MyOrdersPage());
+        _open(const ProductRequestsPage());
         return;
       case 4:
         _open(const CustomerAccountPage());
@@ -48,7 +77,7 @@ class _RestoredHomeState extends State<RestoredHome> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return RequestAlerts(child: Scaffold(
       backgroundColor: const Color(0xfff5f5f5),
       drawer: const _HomeDrawer(),
       bottomNavigationBar: BottomNavigationBar(
@@ -100,14 +129,14 @@ class _RestoredHomeState extends State<RestoredHome> {
                           const Spacer(),
                           IconButton(
                             tooltip: 'الإشعارات',
-                            onPressed: () => _open(const NotificationCenterPage()),
+                            onPressed: () => _openRequest(),
                             icon: const Icon(Icons.notifications_none, color: Colors.white, size: 30),
                           ),
                         ],
                       ),
                       const SizedBox(height: 22),
                       InkWell(
-                        onTap: () => _open(const ProductSearchPage()),
+                        onTap: () => _open(const ProductRequestPage()),
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
                           height: 54,
@@ -117,7 +146,7 @@ class _RestoredHomeState extends State<RestoredHome> {
                             children: [
                               Icon(Icons.search, size: 30),
                               SizedBox(width: 10),
-                              Text('شنو تحتاج؟ إطارات أو بطاريات...', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                              Text('أرسل طلب قياس أو بطارية...', style: TextStyle(color: Colors.grey, fontSize: 16)),
                             ],
                           ),
                         ),
@@ -145,32 +174,20 @@ class _RestoredHomeState extends State<RestoredHome> {
                         () => _open(const VehDbCarsPage()),
                       ),
                       const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: RestoredHomeUi.category(
-                              Icons.tire_repair,
-                              'الإطارات',
-                              () => _open(const commerce.TiresPage()),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: RestoredHomeUi.category(
-                              Icons.battery_charging_full,
-                              'البطاريات',
-                              () => _open(const commerce.BatteriesPage()),
-                            ),
-                          ),
-                        ],
+                      RestoredHomeUi.button(
+                        Icons.tire_repair,
+                        'طلب قياس إطار',
+                        'اكتب القياس ونرد عليك بالمتوفر والسعر',
+                        restoredYellow,
+                        () => _open(const ProductRequestPage()),
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
-                        Icons.straighten,
-                        'طلب قياس',
-                        'ما لكيت القياس؟ أرسل طلب للمحلات',
+                        Icons.battery_charging_full,
+                        'طلب بطارية',
+                        'اكتب الأمبير أو نوع سيارتك ونرد عليك',
                         restoredYellow,
-                        () => _open(const EnhancedSizeRequestPage()),
+                        () => _open(const ProductRequestPage(initialType: 'battery')),
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
@@ -212,7 +229,7 @@ class _RestoredHomeState extends State<RestoredHome> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -307,7 +324,12 @@ class _HomeDrawer extends StatelessWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.receipt_long),
-                title: const Text('طلباتي'),
+                title: const Text('طلباتي وردود الإدارة'),
+                onTap: () => _open(context, const ProductRequestsPage()),
+              ),
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('طلبات الشراء السابقة'),
                 onTap: () => _open(context, const MyOrdersPage()),
               ),
               ListTile(
@@ -482,7 +504,7 @@ class CustomerAccountPage extends StatelessWidget {
               leading: const Icon(Icons.receipt_long),
               title: const Text('طلباتي'),
               trailing: const Icon(Icons.arrow_back_ios_new, size: 16),
-              onTap: () => _open(context, const MyOrdersPage()),
+              onTap: () => _open(context, const ProductRequestsPage()),
             ),
             ListTile(
               leading: const Icon(Icons.shopping_cart),

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'support_system.dart';
+import 'product_requests.dart';
 
 export 'support_system.dart' show SupportPage;
 

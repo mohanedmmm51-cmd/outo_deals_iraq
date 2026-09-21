@@ -136,11 +136,11 @@ class Home extends StatelessWidget {
                           child: cat(
                             context,
                             Icons.tire_repair,
-                            'الإطارات',
+                            'طلب قياس إطار',
                             () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const TiresPage(),
+                                builder: (_) => const ProductRequestPage(),
                               ),
                             ),
                           ),
@@ -150,11 +150,11 @@ class Home extends StatelessWidget {
                           child: cat(
                             context,
                             Icons.battery_charging_full,
-                            'البطاريات',
+                            'طلب بطارية',
                             () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const BatteriesPage(),
+                                builder: (_) => const ProductRequestPage(initialType: 'battery'),
                               ),
                             ),
                           ),

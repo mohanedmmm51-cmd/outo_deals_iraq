@@ -1,5 +1,5 @@
 const { onRequest } = require('firebase-functions/v2/https');
-const { onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('node:crypto');
@@ -471,3 +471,106 @@ exports.autoWeeklySettlement = onDocumentUpdated(
     });
   },
 );
+
+const { adminRecipients, replyChanged, validPushEndpoint } = require('./request-notifications');
+const webpush = require('web-push');
+
+async function requestPushKeys() {
+  const ref = db.collection('request_push_secrets').doc('vapid');
+  return db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (snap.exists) return snap.data();
+    const keys = webpush.generateVAPIDKeys();
+    tx.create(ref, keys);
+    return keys;
+  });
+}
+
+exports.requestPushPublicKey = onRequest({ region: 'europe-west1' }, async (req, res) => {
+  res.set('Access-Control-Allow-Origin', 'https://auto-deals-iraq.web.app');
+  if (req.method !== 'GET') return res.status(405).end();
+  try {
+    const { publicKey } = await requestPushKeys();
+    res.set('Cache-Control', 'public, max-age=3600');
+    return res.json({ publicKey });
+  } catch (error) {
+    console.error('Push configuration unavailable', error.message);
+    return res.status(503).json({ error: 'Push configuration unavailable' });
+  }
+});
+
+async function sendRequestPush(uid, title, body, requestId, audience, eventId) {
+  const devices = await db.collection('push_devices').doc(uid).collection('tokens').get();
+  const webDevices = devices.docs.filter(doc => doc.data().subscription);
+  if (webDevices.length) {
+    const keys = await requestPushKeys();
+    for (const device of webDevices) {
+      const subscription = device.data().subscription;
+      if (!validPushEndpoint(subscription.endpoint)) continue;
+      try {
+        await webpush.sendNotification(subscription, JSON.stringify({
+          title, body, tag: `request-${requestId}`,
+          url: `/?request=${encodeURIComponent(requestId)}&audience=${audience}`,
+        }), {
+          vapidDetails: { subject: 'https://auto-deals-iraq.web.app', ...keys },
+          TTL: 86400, urgency: 'high', timeout: 10000,
+        });
+      } catch (error) {
+        if ([400, 404, 410].includes(error.statusCode)) await device.ref.delete();
+        else throw error;
+      }
+    }
+  }
+  const valid = devices.docs.filter(doc => typeof doc.data().token === 'string');
+  // Dispatch in FCM-sized batches and delete expired registrations only.
+  for (let offset = 0; offset < valid.length; offset += 500) {
+    const batch = valid.slice(offset, offset + 500);
+    const result = await admin.messaging().sendEachForMulticast({
+      tokens: batch.map(doc => doc.data().token),
+      notification: { title, body },
+      data: { requestId, audience },
+      webpush: {
+        notification: { tag: `request-${requestId}`, icon: '/icons/Icon-192.png' },
+        fcmOptions: { link: `https://auto-deals-iraq.web.app/?request=${encodeURIComponent(requestId)}&audience=${audience}` },
+      },
+      android: { priority: 'high', notification: { tag: `request-${requestId}` } },
+      apns: { headers: { 'apns-collapse-id': `request-${requestId}` } },
+    });
+    let transientFailure = false;
+    await Promise.all(result.responses.map(async (response, i) => {
+      if (response.success) return;
+      const code = response.error?.code;
+      if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(code)) {
+        await batch[i].ref.delete();
+      } else {
+        transientFailure = true;
+        console.error('Request notification failed', { uid, eventId, code });
+      }
+    }));
+    if (transientFailure) throw new Error('Request push delivery incomplete');
+  }
+}
+
+exports.notifyNewProductRequest = onDocumentCreated({
+  document: 'product_requests/{requestId}', region: 'europe-west1', retry: true,
+}, async event => {
+  const data = event.data?.data();
+  if (!data) return;
+  const [roles, flags] = await Promise.all([
+    db.collection('users').where('role', '==', 'admin').get(),
+    db.collection('users').where('isAdmin', '==', true).get(),
+  ]);
+  const title = data.type === 'battery' ? 'طلب بطارية جديد' : 'طلب قياس إطار جديد';
+  await Promise.all(adminRecipients(roles.docs, flags.docs).map(uid =>
+    sendRequestPush(uid, title, `${data.size}`, event.params.requestId, 'admin', event.id)));
+});
+
+exports.notifyProductRequestReply = onDocumentUpdated({
+  document: 'product_requests/{requestId}', region: 'europe-west1', retry: true,
+}, async event => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!replyChanged(before, after) || !after.customerUid) return;
+  await sendRequestPush(after.customerUid, 'وصلك رد الإدارة',
+    `تم الرد على طلب ${after.size}`, event.params.requestId, 'customer', event.id);
+});

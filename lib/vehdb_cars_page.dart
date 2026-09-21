@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'app_core.dart' as legacy;
 import 'vehicle_catalog.dart';
+import 'product_requests.dart';
 
 const _yellow = Color(0xFFFFD400);
 
@@ -243,7 +244,21 @@ class _VehDbCarsPageState extends State<VehDbCarsPage> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => legacy.SizesPage(car: car, sizes: result),
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('اختار القياس المطلوب')),
+            body: Directionality(textDirection: TextDirection.rtl, child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text('${car.make} ${car.model} • ${car.year}', style: const TextStyle(fontSize: 20)),
+                if (result.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('ما توفر قياس لهذه السيارة. تكدر تكتبه يدوياً بطلب قياس.')),
+                ...result.map((size) => Card(child: ListTile(
+                  title: Text(size), trailing: const Icon(Icons.send),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductRequestPage(initialSize: size))),
+                ))),
+                TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductRequestPage())), child: const Text('كتابة القياس يدوياً')),
+              ],
+            )),
+          ),
         ),
       );
     } catch (e) {
