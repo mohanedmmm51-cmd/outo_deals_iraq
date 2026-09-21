@@ -38,6 +38,7 @@ class RequestPushService {
       headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
       body: jsonEncode(data),
     ).timeout(const Duration(seconds: 25));
+    if (data['action'] == 'notify' && response.statusCode == 409) return; // Expired retry.
     if (response.statusCode != 200) throw StateError('push_${response.statusCode}');
   }
 
@@ -51,19 +52,17 @@ class RequestPushService {
   // retry on the next signed-in session; the relay suppresses duplicate sends.
   static Future<bool> notify(String id, String event) async {
     try {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return false;
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'request_push_outbox_$uid';
-    final entry = '$event:$id';
-    final entries = prefs.getStringList(key) ?? [];
-    if (!entries.contains(entry)) await prefs.setStringList(key, [...entries, entry]);
-    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return false;
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'request_push_outbox_$uid';
+      final entry = '$event:$id';
+      final entries = prefs.getStringList(key) ?? [];
+      if (!entries.contains(entry)) await prefs.setStringList(key, [...entries, entry]);
       await _relay({'action': 'notify', 'requestId': id, 'event': event});
       final pending = prefs.getStringList(key) ?? [];
       await prefs.setStringList(key, pending.where((e) => e != entry).toList());
       return true;
-    } catch (_) { return false; }
     } catch (_) { return false; }
   }
 
@@ -104,10 +103,11 @@ class RequestPushService {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (kIsWeb) {
       final data = await currentWebPush();
-      if (uid != null && data != null) {
-        await _relay({'action': 'unsubscribe', 'endpoint': (data['subscription'] as Map)['endpoint']});
-      }
-      await disableWebPush();
+      try {
+        if (uid != null && data != null) {
+          await _relay({'action': 'unsubscribe', 'endpoint': (data['subscription'] as Map)['endpoint']});
+        }
+      } finally { await disableWebPush(); }
       return;
     }
     // Also remove a token restored by the SDK after a page reload.
