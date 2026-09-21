@@ -38,16 +38,10 @@ class NotificationService {
   static Future<void> init() async {
     try {
       final settings = await FirebaseMessaging.instance.getNotificationSettings();
-      if (settings.authorizationStatus != AuthorizationStatus.authorized) return;
-      final token = await FirebaseMessaging.instance.getToken();
-      final user = FirebaseAuth.instance.currentUser;
-      if (token != null && user != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'fcmToken': token,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        await RequestPushService.enable();
       }
-    } catch (_) {}
+    } catch (_) { /* The user can retry from the explicit activation button. */ }
   }
 }
 
@@ -221,6 +215,8 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
         await FirebaseAuth.instance.signOut();
         throw Exception('هذا الحساب مو حساب إدارة');
       }
+      if (!mounted) return;
+      await NotificationService.init();
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()));
     } catch (e) {
