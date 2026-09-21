@@ -911,6 +911,41 @@ service cloud.firestore {
       allow delete: if isAdmin()
         || (isShop() && resource.data.get('shopId', '') == shopId());
     }
+    // Direct customer requests: only the customer and administration may read them.
+    match /product_requests/{id} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['customerUid', 'type', 'size', 'note', 'status', 'createdAt', 'updatedAt'])
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.type in ['tire', 'battery']
+        && request.resource.data.size is string
+        && request.resource.data.size.size() > 0 && request.resource.data.size.size() <= 100
+        && request.resource.data.note is string && request.resource.data.note.size() <= 500
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/product_requests/$(id))
+        || isAdmin() || resource.data.customerUid == request.auth.uid);
+      allow list: if isAdmin() || (signedIn() && resource.data.customerUid == request.auth.uid);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reply', 'price', 'status', 'repliedBy', 'repliedAt', 'updatedAt'])
+        && request.resource.data.status == 'answered'
+        && request.resource.data.reply is string
+        && request.resource.data.reply.size() > 0 && request.resource.data.reply.size() <= 1000
+        && (request.resource.data.price == null || (request.resource.data.price is int && request.resource.data.price > 0 && request.resource.data.price <= 100000000))
+        && request.resource.data.repliedBy == request.auth.uid
+        && request.resource.data.repliedAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+    match /push_devices/{uid}/tokens/{tokenId} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['token', 'updatedAt'])
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 0 && request.resource.data.token.size() <= 1000
+        && request.resource.data.updatedAt == request.time;
+    }
+
     match /size_requests/{id} {
       allow create: if validNewSizeRequest(id);
       allow get: if isAdmin() || isShop() || ownsSizeRequest(id);

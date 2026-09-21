@@ -1,3 +1,5 @@
+import 'product_requests.dart';
+import 'request_notifications.dart';
 import 'manual_payments.dart';
 import 'marketplace_rules.dart';
 import 'settlement_payment.dart';
@@ -35,7 +37,8 @@ DateTime _asDate(dynamic value) {
 class NotificationService {
   static Future<void> init() async {
     try {
-      await FirebaseMessaging.instance.requestPermission();
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      if (settings.authorizationStatus != AuthorizationStatus.authorized) return;
       final token = await FirebaseMessaging.instance.getToken();
       final user = FirebaseAuth.instance.currentUser;
       if (token != null && user != null) {
@@ -128,7 +131,8 @@ class _ShopAuthPageState extends State<ShopAuthPage> {
         final userDoc = await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).get();
         final data = userDoc.data();
         if (data == null || data['role'] != 'shop') {
-          await FirebaseAuth.instance.signOut();
+          await RequestPushService.detach();
+        await FirebaseAuth.instance.signOut();
           throw Exception('هذا الحساب مو حساب محل');
         }
         final shopId = '${data['shopId'] ?? ''}';
@@ -213,6 +217,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
       final doc = await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).get();
       final data = doc.data();
       if (data?['role'] != 'admin' && data?['isAdmin'] != true) {
+        await RequestPushService.detach();
         await FirebaseAuth.instance.signOut();
         throw Exception('هذا الحساب مو حساب إدارة');
       }
@@ -255,7 +260,8 @@ class AdminDashboardPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('لوحة إدارة Auto Deals Iraq'),
         actions: [
-          IconButton(onPressed: () async { await FirebaseAuth.instance.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout)),
+          IconButton(onPressed: () async { await RequestPushService.detach();
+        await FirebaseAuth.instance.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout)),
         ],
       ),
       body: Directionality(
@@ -284,6 +290,9 @@ class AdminDashboardPage extends StatelessWidget {
                     return ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
+                        const AdminProductRequestsTile(),
+                        const RequestNotificationButton(),
+                        const SizedBox(height: 12),
                         Row(children: [Expanded(child: _adminStat(context, 'الطلبات', '${orders.length}', Icons.receipt_long, const OrdersManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'المنفذة', '${completed.length}', Icons.check_circle, const OrdersManagementPage(initialStatus: 'completed')))]),
                         const SizedBox(height: 8),
                         Row(children: [Expanded(child: _adminStat(context, 'المحلات', '${shops.length}', Icons.store, const AdminShopsManagementPage())), const SizedBox(width: 8), Expanded(child: _adminStat(context, 'عمولات معلقة', '${_money(due)} د.ع', Icons.account_balance_wallet, const AdminPendingCommissionsPage()))]),
@@ -752,47 +761,10 @@ class _OnlineNearbyShopsPageState extends State<OnlineNearbyShopsPage> {
   );
 }
 
-class OnlineSizeRequestPage extends StatefulWidget {
+class OnlineSizeRequestPage extends StatelessWidget {
   const OnlineSizeRequestPage({super.key});
-
   @override
-  State<OnlineSizeRequestPage> createState() => _OnlineSizeRequestPageState();
-}
-
-class _OnlineSizeRequestPageState extends State<OnlineSizeRequestPage> {
-  final type = TextEditingController(text: 'إطار');
-  final size = TextEditingController();
-  final phone = TextEditingController();
-
-  Future<void> _submit() async {
-    await FirebaseFirestore.instance.collection('size_requests').add({
-      'type': type.text.trim(),
-      'size': size.text.trim(),
-      'phone': phone.text.trim(),
-      'status': 'open',
-      'createdAt': FieldValue.serverTimestamp(),
-      'responses': <Map<String, dynamic>>[],
-    });
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الطلب للمحلات')));
-    size.clear();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('طلب قياس')),
-        body: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(children: [
-            TextField(controller: type, decoration: const InputDecoration(labelText: 'النوع', border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            TextField(controller: size, decoration: const InputDecoration(labelText: 'القياس المطلوب', border: OutlineInputBorder())),
-            const SizedBox(height: 12),
-            TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'رقم الهاتف', border: OutlineInputBorder())),
-            const SizedBox(height: 14),
-            FilledButton(onPressed: _submit, child: const Text('إرسال للمحلات')),
-          ]),
-        ),
-      );
+  Widget build(BuildContext context) => const ProductRequestPage();
 }
 
 class ShopSizeRequestsPage extends StatelessWidget {

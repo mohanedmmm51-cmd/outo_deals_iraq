@@ -27,4 +27,11 @@ for (const key of ['apiKey', 'appId', 'projectId', 'messagingSenderId']) {
 }
 if (config.projectId !== project || config.appId !== app.appId) throw new Error('Firebase configuration does not match selected app');
 writeFileSync('build/web/firebase-config.json', JSON.stringify(config, null, 2));
+// Service workers need synchronous initialization before push events arrive.
+writeFileSync('build/web/firebase-messaging-sw.js', [
+  "importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js');",
+  "importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js');",
+  `firebase.initializeApp(${JSON.stringify(config)});`,
+  'firebase.messaging();',
+].join('\n'));
 console.log('Firebase Web configuration prepared for ' + project);
