@@ -23,13 +23,15 @@ window.autoDealsPushEnable = async function () {
   if (Notification.permission !== 'granted' && await Notification.requestPermission() !== 'granted') throw new Error('Permission denied');
   const registration = await requestPushRegistration();
   let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) {
-    const response = await fetch('https://europe-west1-auto-deals-iraq.cloudfunctions.net/requestPushPublicKey');
+  {
+    const response = await fetch('https://auto-deals-push.mohanedmmm51.chatgpt.site/api/push');
     if (!response.ok) throw new Error('Push configuration unavailable');
     const { publicKey } = await response.json();
     const decoded = atob(publicKey.replace(/-/g, '+').replace(/_/g, '/'));
     const key = Uint8Array.from(decoded, c => c.charCodeAt(0));
-    subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    const oldKey = subscription?.options.applicationServerKey;
+    if (subscription && (!oldKey || Array.from(new Uint8Array(oldKey)).join(',') !== Array.from(key).join(','))) { await subscription.unsubscribe(); subscription = null; }
+    if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
   }
   return JSON.stringify(await subscriptionInfo(subscription));
 };

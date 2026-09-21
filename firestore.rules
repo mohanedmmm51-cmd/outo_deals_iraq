@@ -937,6 +937,16 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
       allow delete: if isAdmin();
     }
+    // Authorization-only probe for the Web Push relay. No document is stored here,
+    // and no profile data is exposed. An authorized REST get returns NOT_FOUND;
+    // other reads fail with PERMISSION_DENIED. Rechecked for every admin delivery.
+    match /push_admin_checks/{uid} {
+      allow get: if signedIn()
+        && exists(/databases/$(database)/documents/users/$(uid))
+        && (get(/databases/$(database)/documents/users/$(uid)).data.get('role', '') == 'admin'
+          || get(/databases/$(database)/documents/users/$(uid)).data.get('isAdmin', false) == true);
+      allow list, write: if false;
+    }
     match /push_devices/{uid}/tokens/{tokenId} {
       allow read, delete: if signedIn() && request.auth.uid == uid;
       allow create, update: if signedIn() && request.auth.uid == uid
