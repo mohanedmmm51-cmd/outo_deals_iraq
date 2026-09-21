@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -27,13 +29,60 @@ class RequestPushService {
     _uid = uid; _token = token;
   }
 
+  static Future<void> _relay(Map<String, dynamic> data) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('سجل الدخول أولاً');
+    final token = await user.getIdToken();
+    final response = await http.post(
+      Uri.parse('https://auto-deals-push.mohanedmmm51.chatgpt.site/api/push'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+      body: jsonEncode(data),
+    ).timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) throw StateError('push_${response.statusCode}');
+  }
+
+  static Future<void> test() async {
+    final data = await currentWebPush();
+    if (data == null) throw StateError('فعّل الإشعارات أولاً');
+    await _relay({'action': 'test', 'endpoint': (data['subscription'] as Map)['endpoint']});
+  }
+
+  // A failed push never rolls back a saved request/reply. Persist only IDs and
+  // retry on the next signed-in session; the relay suppresses duplicate sends.
+  static Future<bool> notify(String id, String event) async {
+    try {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return false;
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'request_push_outbox_$uid';
+    final entry = '$event:$id';
+    final entries = prefs.getStringList(key) ?? [];
+    if (!entries.contains(entry)) await prefs.setStringList(key, [...entries, entry]);
+    try {
+      await _relay({'action': 'notify', 'requestId': id, 'event': event});
+      final pending = prefs.getStringList(key) ?? [];
+      await prefs.setStringList(key, pending.where((e) => e != entry).toList());
+      return true;
+    } catch (_) { return false; }
+    } catch (_) { return false; }
+  }
+
+  static Future<void> retryPending() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final entries = prefs.getStringList('request_push_outbox_$uid') ?? [];
+    for (final entry in entries.take(10)) {
+      if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+      final parts = entry.split(':');
+      if (parts.length == 2 && !await notify(parts[1], parts[0])) return;
+    }
+  }
+
   static Future<void> enable() async {
     if (kIsWeb) {
       final data = await enableWebPush();
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) throw StateError('سجل الدخول أولاً');
-      await FirebaseFirestore.instance.collection('push_devices').doc(uid).collection('tokens').doc(data['id'] as String)
-        .set({'subscription': data['subscription'], 'updatedAt': FieldValue.serverTimestamp()});
+      await _relay({'action': 'subscribe', 'subscription': data['subscription']});
       return;
     }
     if (!await FirebaseMessaging.instance.isSupported()) throw StateError('unsupported');
@@ -56,7 +105,7 @@ class RequestPushService {
     if (kIsWeb) {
       final data = await currentWebPush();
       if (uid != null && data != null) {
-        await FirebaseFirestore.instance.collection('push_devices').doc(uid).collection('tokens').doc(data['id'] as String).delete();
+        await _relay({'action': 'unsubscribe', 'endpoint': (data['subscription'] as Map)['endpoint']});
       }
       await disableWebPush();
       return;
@@ -93,11 +142,21 @@ class _RequestNotificationButtonState extends State<RequestNotificationButton> {
       if (mounted) setState(() => error = 'تعذر تفعيل إشعارات الجهاز حالياً. تابع الطلبات والردود داخل الموقع. تأكد من السماح بالإشعارات؛ وعلى الآيفون افتح الموقع من أيقونته على الشاشة الرئيسية.');
     } finally { if (mounted) setState(() => busy = false); }
   }
+  Future<void> testPush() async {
+    setState(() { busy = true; error = null; });
+    try {
+      await RequestPushService.test();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال إشعار تجريبي؛ تحقق من هاتفك')));
+    } catch (_) {
+      if (mounted) setState(() => error = 'تعذر إرسال الإشعار التجريبي. حاول تفعيل الإشعارات مرة ثانية.');
+    } finally { if (mounted) setState(() => busy = false); }
+  }
   @override
   Widget build(BuildContext context) => Column(children: [
-    OutlinedButton.icon(onPressed: busy || enabled ? null : enable,
+    OutlinedButton.icon(onPressed: busy ? null : enable,
       icon: Icon(enabled ? Icons.notifications_active : Icons.notifications_outlined),
       label: Text(busy ? 'جاري التفعيل...' : enabled ? 'إشعارات هذا الجهاز مفعّلة' : 'تفعيل إشعارات الطلبات على هذا الجهاز')),
+    if (enabled && kIsWeb) TextButton.icon(onPressed: busy ? null : testPush, icon: const Icon(Icons.send), label: const Text('تجربة إشعار')),
     if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!, style: const TextStyle(color: Colors.red))),
   ]);
 }
@@ -123,6 +182,7 @@ class _RequestAlertsState extends State<RequestAlerts> {
     final current = ++generation;
     await requests?.cancel(); requests = null;
     if (user == null) return;
+    unawaited(RequestPushService.retryPending().catchError((Object _) {}));
     try {
       final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (!mounted || current != generation) return;
