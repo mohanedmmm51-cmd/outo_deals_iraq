@@ -8,4 +8,12 @@ function replyChanged(before, after) {
     (before?.status !== 'answered' || before.reply !== after.reply || before.price !== after.price);
 }
 
-module.exports = { adminRecipients, replyChanged };
+function validPushEndpoint(endpoint) {
+  try {
+    const url = new URL(endpoint);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+      ['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com'].includes(url.hostname);
+  } catch (_) { return false; }
+}
+
+module.exports = { adminRecipients, replyChanged, validPushEndpoint };

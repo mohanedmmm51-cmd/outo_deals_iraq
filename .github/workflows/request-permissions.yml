@@ -20,5 +20,7 @@ jobs:
       - run: npm install --global firebase-tools@14.12.0
       - run: npm install
         working-directory: tools/request-rules
+      - run: cp ../../firestore.rules firestore.rules
+        working-directory: tools/request-rules
       - run: firebase emulators:exec --project demo-auto-deals-requests --only firestore --config firebase.json "node --test permissions.test.js"
         working-directory: tools/request-rules

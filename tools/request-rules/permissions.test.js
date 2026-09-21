@@ -48,3 +48,12 @@ test('forged requests and notification registrations are rejected', async () => 
   await assertFails(setDoc(doc(customer, 'push_devices/admin/tokens/device1'), { token: 'test-token', updatedAt: serverTimestamp() }));
   await assertFails(getDocs(collection(customer, 'push_devices/admin/tokens')));
 });
+
+
+test('web subscriptions stay private and secrets cannot be read even by admin', async () => {
+  const customer = env.authenticatedContext('customer').firestore();
+  const subscription = { endpoint: 'https://web.push.apple.com/test', keys: { auth: 'auth', p256dh: 'key' }, expirationTime: null };
+  await assertSucceeds(setDoc(doc(customer, 'push_devices/customer/tokens/web'), { subscription, updatedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(customer, 'push_devices/customer/tokens/forged'), { subscription: { ...subscription, endpoint: 'https://127.0.0.1/' }, updatedAt: serverTimestamp() }));
+  await assertFails(getDoc(doc(env.authenticatedContext('admin').firestore(), 'request_push_secrets/vapid')));
+});

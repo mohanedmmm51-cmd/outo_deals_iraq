@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'request_push_stub.dart' if (dart.library.js_interop) 'request_push_web.dart';
 
 class RequestPushService {
   static StreamSubscription<String>? _refresh;
@@ -26,6 +28,14 @@ class RequestPushService {
   }
 
   static Future<void> enable() async {
+    if (kIsWeb) {
+      final data = await enableWebPush();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('سجل الدخول أولاً');
+      await FirebaseFirestore.instance.collection('push_devices').doc(uid).collection('tokens').doc(data['id'] as String)
+        .set({'subscription': data['subscription'], 'updatedAt': FieldValue.serverTimestamp()});
+      return;
+    }
     if (!await FirebaseMessaging.instance.isSupported()) throw StateError('unsupported');
     final result = await FirebaseMessaging.instance.requestPermission();
     if (result.authorizationStatus != AuthorizationStatus.authorized && result.authorizationStatus != AuthorizationStatus.provisional) {
@@ -43,6 +53,14 @@ class RequestPushService {
   static Future<void> detach() async {
     await _refresh?.cancel(); _refresh = null;
     final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (kIsWeb) {
+      final data = await currentWebPush();
+      if (uid != null && data != null) {
+        await FirebaseFirestore.instance.collection('push_devices').doc(uid).collection('tokens').doc(data['id'] as String).delete();
+      }
+      await disableWebPush();
+      return;
+    }
     // Also remove a token restored by the SDK after a page reload.
     try {
       final settings = await FirebaseMessaging.instance.getNotificationSettings();

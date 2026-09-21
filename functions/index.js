@@ -472,10 +472,55 @@ exports.autoWeeklySettlement = onDocumentUpdated(
   },
 );
 
-const { adminRecipients, replyChanged } = require('./request-notifications');
+const { adminRecipients, replyChanged, validPushEndpoint } = require('./request-notifications');
+const webpush = require('web-push');
+
+async function requestPushKeys() {
+  const ref = db.collection('request_push_secrets').doc('vapid');
+  return db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (snap.exists) return snap.data();
+    const keys = webpush.generateVAPIDKeys();
+    tx.create(ref, keys);
+    return keys;
+  });
+}
+
+exports.requestPushPublicKey = onRequest({ region: 'europe-west1' }, async (req, res) => {
+  res.set('Access-Control-Allow-Origin', 'https://auto-deals-iraq.web.app');
+  if (req.method !== 'GET') return res.status(405).end();
+  try {
+    const { publicKey } = await requestPushKeys();
+    res.set('Cache-Control', 'public, max-age=3600');
+    return res.json({ publicKey });
+  } catch (error) {
+    console.error('Push configuration unavailable', error.message);
+    return res.status(503).json({ error: 'Push configuration unavailable' });
+  }
+});
 
 async function sendRequestPush(uid, title, body, requestId, audience, eventId) {
   const devices = await db.collection('push_devices').doc(uid).collection('tokens').get();
+  const webDevices = devices.docs.filter(doc => doc.data().subscription);
+  if (webDevices.length) {
+    const keys = await requestPushKeys();
+    for (const device of webDevices) {
+      const subscription = device.data().subscription;
+      if (!validPushEndpoint(subscription.endpoint)) continue;
+      try {
+        await webpush.sendNotification(subscription, JSON.stringify({
+          title, body, tag: `request-${requestId}`,
+          url: `/?request=${encodeURIComponent(requestId)}&audience=${audience}`,
+        }), {
+          vapidDetails: { subject: 'https://auto-deals-iraq.web.app', ...keys },
+          TTL: 86400, urgency: 'high', timeout: 10000,
+        });
+      } catch (error) {
+        if ([400, 404, 410].includes(error.statusCode)) await device.ref.delete();
+        else throw error;
+      }
+    }
+  }
   const valid = devices.docs.filter(doc => typeof doc.data().token === 'string');
   // Dispatch in FCM-sized batches and delete expired registrations only.
   for (let offset = 0; offset < valid.length; offset += 500) {
