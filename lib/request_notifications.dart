@@ -90,7 +90,7 @@ class _RequestNotificationButtonState extends State<RequestNotificationButton> {
       await RequestPushService.enable();
       if (mounted) setState(() => enabled = true);
     } catch (_) {
-      if (mounted) setState(() => error = 'تعذر تفعيل الإشعارات. اسمح بها من إعدادات المتصفح؛ على الآيفون افتح الموقع من أيقونته بعد إضافته للشاشة الرئيسية، ثم أعد المحاولة.');
+      if (mounted) setState(() => error = 'تعذر تفعيل إشعارات الجهاز حالياً. تابع الطلبات والردود داخل الموقع. تأكد من السماح بالإشعارات؛ وعلى الآيفون افتح الموقع من أيقونته على الشاشة الرئيسية.');
     } finally { if (mounted) setState(() => busy = false); }
   }
   @override
