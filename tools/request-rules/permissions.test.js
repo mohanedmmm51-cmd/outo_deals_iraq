@@ -7,9 +7,10 @@ let env;
 before(async () => {
   env = await initializeTestEnvironment({ projectId: 'demo-auto-deals-requests', firestore: { rules: readFileSync('../../firestore.rules', 'utf8') } });
   await env.withSecurityRulesDisabled(async context => {
-    await setDoc(doc(context.firestore(), 'users/admin'), { role: 'admin' });
-    await setDoc(doc(context.firestore(), 'users/shop'), { role: 'shop', shopId: 'shop1' });
-    await setDoc(doc(context.firestore(), 'shops/shop1'), { ownerUid: 'shop', approved: true });
+    const db = context.firestore();
+    await setDoc(doc(db, 'users/admin'), { role: 'admin' });
+    await setDoc(doc(db, 'users/shop'), { role: 'shop', shopId: 'shop1' });
+    await setDoc(doc(db, 'shops/shop1'), { ownerUid: 'shop', approved: true });
   });
 });
 after(async () => { await env?.cleanup(); });
