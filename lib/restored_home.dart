@@ -192,10 +192,10 @@ class _RestoredHomeState extends State<RestoredHome> {
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(
                         Icons.location_on,
-                        'المحلات القريبة',
-                        'المسافة + الأقرب + الاتجاهات',
-                        Colors.white,
-                        () => _open(const OnlineNearbyShopsPage()),
+                        'المحلات القريبة — قريباً',
+                        'الخدمة متوقفة مؤقتاً',
+                        Colors.grey.shade100,
+                        null,
                       ),
                       const SizedBox(height: 14),
                       RestoredHomeUi.button(

@@ -165,15 +165,10 @@ class Home extends StatelessWidget {
                     button(
                       context,
                       Icons.location_on,
-                      'المحلات القريبة',
-                      'المسافة + الأقرب + الاتجاهات',
-                      Colors.white,
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const NearbyShopsPage(),
-                        ),
-                      ),
+                      'المحلات القريبة — قريباً',
+                      'الخدمة متوقفة مؤقتاً',
+                      Colors.grey.shade100,
+                      null,
                     ),
                     const SizedBox(height: 14),
                     button(
