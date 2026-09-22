@@ -6,6 +6,14 @@ import 'request_notifications.dart';
 
 final productRequests = FirebaseFirestore.instance.collection('product_requests');
 
+String requestStatusLabel(String? status) => switch (status) {
+  'answered' => 'تم رد الإدارة',
+  'accepted' => 'وافق الزبون',
+  'completed' => 'مكتمل',
+  'cancelled' => 'ملغي',
+  _ => 'جديد • بانتظار رد الإدارة',
+};
+
 String requestLabel(String type) => type == 'battery' ? 'طلب بطارية' : 'طلب قياس إطار';
 
 class ProductRequestPage extends StatefulWidget {
@@ -104,12 +112,12 @@ class ProductRequestsPage extends StatelessWidget {
           });
           if (docs.isEmpty) return const Center(child: Text('ماكو طلبات حالياً'));
           return ListView.builder(padding: const EdgeInsets.all(16), itemCount: docs.length, itemBuilder: (context, i) {
-            final doc = docs[i]; final d = doc.data(); final answered = d['status'] == 'answered';
+            final doc = docs[i]; final d = doc.data(); final status = d['status'] as String?; final answered = status != 'pending';
             return Card(child: ListTile(
               leading: Icon(d['type'] == 'battery' ? Icons.battery_charging_full : Icons.tire_repair),
               title: Text('${requestLabel(d['type'] as String)} • ${d['size']}'),
-              subtitle: Text(answered ? 'تم الرد • ${d['reply'] ?? ''}' : 'بانتظار رد الإدارة', maxLines: 2, overflow: TextOverflow.ellipsis),
-              trailing: Icon(answered ? Icons.mark_email_read : Icons.mark_email_unread, color: answered ? Colors.green : Colors.orange),
+              subtitle: Text('${requestStatusLabel(status)}${d['reply'] == null ? '' : ' • ${d['reply']}'}', maxLines: 2, overflow: TextOverflow.ellipsis),
+              trailing: Icon(status == 'cancelled' ? Icons.cancel_outlined : status == 'completed' ? Icons.check_circle : answered ? Icons.mark_email_read : Icons.mark_email_unread, color: status == 'cancelled' ? Colors.red : answered ? Colors.green : Colors.orange),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductRequestDetailPage(id: doc.id, admin: admin))),
             ));
           });
@@ -144,10 +152,17 @@ class _ProductRequestDetailPageState extends State<ProductRequestDetailPage> {
     }
     setState(() { busy = true; error = null; });
     try {
-      await productRequests.doc(widget.id).update({
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final ref = productRequests.doc(widget.id);
+        final existing = await tx.get(ref);
+        if (!['pending', 'answered'].contains(existing.data()?['status'])) {
+          throw StateError('تغيّرت حالة الطلب. لا يمكن تعديل الرد بعد الموافقة أو الإغلاق.');
+        }
+        tx.update(ref, {
         'reply': reply.text.trim(), 'price': amount, 'status': 'answered',
         'repliedBy': FirebaseAuth.instance.currentUser!.uid,
         'repliedAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(),
+      });
       });
       final notified = await RequestPushService.notify(widget.id, 'answered');
       if (mounted) {
@@ -156,6 +171,37 @@ class _ProductRequestDetailPageState extends State<ProductRequestDetailPage> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الرد للزبون')));
       }
     } catch (_) { if (mounted) setState(() => error = 'تعذر إرسال الرد. حاول مجدداً.'); }
+    finally { if (mounted) setState(() => busy = false); }
+  }
+
+  Future<void> changeStatus(String target, Map<String, dynamic> displayed) async {
+    if (busy) return;
+    final title = target == 'accepted' ? 'الموافقة على العرض' : target == 'completed' ? 'تأكيد إكمال الطلب' : 'إلغاء الطلب';
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(target == 'accepted' ? 'توافق على السعر ${displayed['price']} د.ع والتفاصيل المذكورة بالرد؟' : target == 'completed' ? 'تأكد أن الطلب تم تسليمه للزبون قبل الإكمال.' : 'تريد تلغي هذا الطلب؟ يبقى ظاهر بالسجل كملغي.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('رجوع')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('تأكيد'))],
+    ));
+    if (confirmed != true || !mounted) return;
+    setState(() { busy = true; error = null; });
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final ref = productRequests.doc(widget.id), current = await tx.get(productRequests.doc(widget.id));
+        final d = current.data();
+        if (d == null) throw StateError('الطلب غير موجود');
+        if (d['status'] == target) return;
+        if (target == 'accepted' && (d['status'] != 'answered' || d['price'] != displayed['price'] || d['reply'] != displayed['reply'] || d['repliedAt'] != displayed['repliedAt'])) {
+          throw StateError('تغيّر العرض. راجع الرد والسعر الجديد وحاول مرة ثانية.');
+        }
+        final time = FieldValue.serverTimestamp();
+        final update = <String, dynamic>{'status': target, 'updatedAt': time};
+        if (target == 'accepted') update['acceptedAt'] = time;
+        if (target == 'completed') { update['completedAt'] = time; update['completedBy'] = FirebaseAuth.instance.currentUser!.uid; }
+        if (target == 'cancelled') { update['cancelledAt'] = time; update['cancelledBy'] = FirebaseAuth.instance.currentUser!.uid; }
+        tx.update(ref, update);
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تحديث الطلب: ${requestStatusLabel(target)}')));
+    } catch (e) { if (mounted) setState(() => error = e is StateError ? e.message.toString() : 'تعذر تحديث الطلب. قد تكون حالته تغيّرت؛ راجعها وحاول مجدداً.'); }
     finally { if (mounted) setState(() => busy = false); }
   }
 
@@ -174,8 +220,8 @@ class _ProductRequestDetailPageState extends State<ProductRequestDetailPage> {
           if ('${d['note'] ?? ''}'.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('${d['note']}')),
           const SizedBox(height: 16),
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(d['status'] == 'answered' ? 'رد الإدارة' : 'تم استلام الطلب • بانتظار رد الإدارة', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            if (d['status'] == 'answered') ...[
+            Text(requestStatusLabel(d['status'] as String?), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            if (d['reply'] != null) ...[
               const SizedBox(height: 12), Text('${d['reply']}', style: const TextStyle(fontSize: 18)),
               if (d['price'] != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text('السعر: ${d['price']} د.ع', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
             ],
@@ -184,12 +230,20 @@ class _ProductRequestDetailPageState extends State<ProductRequestDetailPage> {
             const SizedBox(height: 16), const RequestNotificationButton(),
             const Text('تلكى طلبك ورد الإدارة في «طلباتي» من نفس الحساب أو المتصفح.'),
           ],
-          if (widget.admin) ...[
+          const SizedBox(height: 16),
+          RequestProgress(data: d),
+          if (error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(error!, style: const TextStyle(color: Colors.red))),
+          if (!widget.admin && d['customerUid'] == FirebaseAuth.instance.currentUser?.uid && d['status'] == 'answered' && d['price'] is int && (d['price'] as int) > 0)
+            FilledButton.icon(onPressed: busy ? null : () => changeStatus('accepted', d), icon: const Icon(Icons.check), label: const Text('أوافق على العرض والسعر')),
+          if (widget.admin && d['status'] == 'accepted')
+            FilledButton.icon(onPressed: busy ? null : () => changeStatus('completed', d), icon: const Icon(Icons.task_alt), label: const Text('تأكيد إكمال الطلب')),
+          if (['pending', 'answered', 'accepted'].contains(d['status']))
+            TextButton.icon(onPressed: busy ? null : () => changeStatus('cancelled', d), icon: const Icon(Icons.cancel_outlined), label: const Text('إلغاء الطلب')),
+          if (widget.admin && ['pending', 'answered'].contains(d['status'])) ...[
             const SizedBox(height: 24),
             TextField(controller: reply, enabled: !busy, minLines: 2, maxLines: 5, maxLength: 1000, decoration: const InputDecoration(labelText: 'الرد للزبون', hintText: 'النوعية، المتوفر، السعر للزوج أو للبطارية، أو عدم التوفر', border: OutlineInputBorder())),
             const SizedBox(height: 12),
             TextField(controller: price, enabled: !busy, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'السعر بالدينار (اختياري)', border: OutlineInputBorder())),
-            if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 12),
             FilledButton(onPressed: busy ? null : respond, child: Text(busy ? 'جاري الإرسال...' : 'إرسال الرد')),
           ],
@@ -210,4 +264,25 @@ class AdminProductRequestsTile extends StatelessWidget {
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductRequestsPage(admin: true))),
     )),
   );
+}
+
+class RequestProgress extends StatelessWidget {
+  const RequestProgress({super.key, required this.data});
+  final Map<String, dynamic> data;
+  @override
+  Widget build(BuildContext context) {
+    final stages = <(String, String)>[('createdAt', 'تم إرسال الطلب'), ('repliedAt', 'رد الإدارة'), ('acceptedAt', 'موافقة الزبون'), ('completedAt', 'إكمال الطلب')];
+    if (data['status'] == 'cancelled') stages.add(('cancelledAt', 'إلغاء الطلب'));
+    return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: stages.map((stage) {
+      final value = data[stage.$1];
+      final done = value is Timestamp;
+      final date = done ? value.toDate().toUtc().add(const Duration(hours: 3)) : null;
+      final stamp = date == null ? '' : '${date.year}/${date.month}/${date.day} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+      return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
+        Icon(done ? (stage.$1 == 'cancelledAt' ? Icons.cancel : Icons.check_circle) : Icons.radio_button_unchecked, color: done ? (stage.$1 == 'cancelledAt' ? Colors.red : Colors.green) : Colors.grey),
+        const SizedBox(width: 12), Expanded(child: Text(stage.$2)),
+        if (done) Text(stamp, style: Theme.of(context).textTheme.bodySmall),
+      ]));
+    }).toList())));
+  }
 }

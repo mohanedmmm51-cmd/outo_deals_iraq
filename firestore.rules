@@ -926,7 +926,8 @@ service cloud.firestore {
       allow get: if signedIn() && (!exists(/databases/$(database)/documents/product_requests/$(id))
         || isAdmin() || resource.data.customerUid == request.auth.uid);
       allow list: if isAdmin() || (signedIn() && resource.data.customerUid == request.auth.uid);
-      allow update: if isAdmin()
+      allow update: if (
+        isAdmin() && resource.data.status in ['pending', 'answered']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reply', 'price', 'status', 'repliedBy', 'repliedAt', 'updatedAt'])
         && request.resource.data.status == 'answered'
         && request.resource.data.reply is string
@@ -934,7 +935,31 @@ service cloud.firestore {
         && (request.resource.data.price == null || (request.resource.data.price is int && request.resource.data.price > 0 && request.resource.data.price <= 100000000))
         && request.resource.data.repliedBy == request.auth.uid
         && request.resource.data.repliedAt == request.time
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time
+      ) || (
+        signedIn() && resource.data.customerUid == request.auth.uid
+        && resource.data.status == 'answered' && resource.data.get('price', null) is int
+        && resource.data.price > 0
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt', 'updatedAt'])
+        && request.resource.data.acceptedAt == request.time
+        && request.resource.data.updatedAt == request.time
+      ) || (
+        isAdmin() && resource.data.status == 'accepted'
+        && request.resource.data.status == 'completed'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt', 'completedBy', 'updatedAt'])
+        && request.resource.data.completedAt == request.time
+        && request.resource.data.completedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+      ) || (
+        signedIn() && (isAdmin() || resource.data.customerUid == request.auth.uid)
+        && resource.data.status in ['pending', 'answered', 'accepted']
+        && request.resource.data.status == 'cancelled'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt', 'cancelledBy', 'updatedAt'])
+        && request.resource.data.cancelledAt == request.time
+        && request.resource.data.cancelledBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+      );
       allow delete: if isAdmin();
     }
     // Authorization-only probe for the Web Push relay. No document is stored here,
