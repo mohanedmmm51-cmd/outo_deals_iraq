@@ -73,3 +73,40 @@ test('relay can check current admin authorization without reading profiles or wr
  await env.withSecurityRulesDisabled(async c => {await setDoc(doc(c.firestore(), 'users/revoked'), {role:'customer'});});
  await assertFails(getDoc(doc(customer, 'push_admin_checks/revoked')));
 });
+
+const answer = () => ({reply:'متوفر للزوج',price:100000,status:'answered',repliedBy:'admin',repliedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+const status = (value, uid) => ({status:value,updatedAt:serverTimestamp(),...(value==='accepted'?{acceptedAt:serverTimestamp()}:value==='completed'?{completedAt:serverTimestamp(),completedBy:uid}:{cancelledAt:serverTimestamp(),cancelledBy:uid})});
+test('request lifecycle enforces ownership, sequence and locked accepted price', async()=>{
+ const customer=env.authenticatedContext('customer').firestore(),admin=env.authenticatedContext('admin').firestore(),other=env.authenticatedContext('other').firestore(),shop=env.authenticatedContext('shop').firestore();
+ const path='product_requests/lifecycle';
+ await assertSucceeds(setDoc(doc(customer,path),request()));
+ await assertFails(updateDoc(doc(customer,path),status('accepted','customer')));
+ await assertFails(updateDoc(doc(admin,path),status('completed','admin')));
+ await assertSucceeds(updateDoc(doc(admin,path),answer()));
+ await assertFails(updateDoc(doc(other,path),status('accepted','other')));
+ await assertFails(updateDoc(doc(shop,path),status('accepted','shop')));
+ await assertFails(updateDoc(doc(admin,path),status('accepted','admin')));
+ await assertFails(updateDoc(doc(customer,path),{...status('accepted','customer'),price:1}));
+ await assertSucceeds(updateDoc(doc(customer,path),status('accepted','customer')));
+ await assertFails(updateDoc(doc(admin,path),answer()));
+ await assertFails(updateDoc(doc(customer,path),status('completed','customer')));
+ await assertSucceeds(updateDoc(doc(admin,path),status('completed','admin')));
+ await assertFails(updateDoc(doc(customer,path),status('cancelled','customer')));
+ await assertFails(updateDoc(doc(admin,path),status('cancelled','admin')));
+});
+test('cancellation is terminal, private, and cannot alter the reply',async()=>{
+ const customer=env.authenticatedContext('customer').firestore(),admin=env.authenticatedContext('admin').firestore(),other=env.authenticatedContext('other').firestore();
+ for(const phase of ['pending','answered','accepted']){
+  const path='product_requests/cancel-'+phase;
+  await setDoc(doc(customer,path),request());
+  if(phase!=='pending')await updateDoc(doc(admin,path),answer());
+  if(phase==='accepted')await updateDoc(doc(customer,path),status('accepted','customer'));
+  await assertFails(updateDoc(doc(other,path),status('cancelled','other')));
+  await assertFails(updateDoc(doc(customer,path),{...status('cancelled','customer'),reply:'forged'}));
+  await assertSucceeds(updateDoc(doc(customer,path),status('cancelled','customer')));
+  await assertFails(updateDoc(doc(admin,path),answer()));
+ }
+ const path='product_requests/no-price';await setDoc(doc(customer,path),request());await updateDoc(doc(admin,path),{...answer(),price:null});
+ await assertFails(updateDoc(doc(customer,path),status('accepted','customer')));
+ await assertSucceeds(updateDoc(doc(admin,path),status('cancelled','admin')));
+});

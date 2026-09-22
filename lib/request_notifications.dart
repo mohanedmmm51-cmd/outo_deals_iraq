@@ -78,6 +78,20 @@ class RequestPushService {
     }
   }
 
+  // Restore an existing subscription without showing a permission prompt again.
+  static Future<bool> restore() async {
+    if (FirebaseAuth.instance.currentUser == null) return false;
+    if (kIsWeb) {
+      final data = await currentWebPush();
+      if (data == null) return false;
+      await _relay({'action': 'subscribe', 'subscription': data['subscription']});
+      return true;
+    }
+    if (!await FirebaseMessaging.instance.isSupported()) return false;
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    return settings.authorizationStatus == AuthorizationStatus.authorized || settings.authorizationStatus == AuthorizationStatus.provisional;
+  }
+
   static Future<void> enable() async {
     if (kIsWeb) {
       final data = await enableWebPush();
@@ -133,6 +147,16 @@ class _RequestNotificationButtonState extends State<RequestNotificationButton> {
   bool busy = false;
   bool enabled = false;
   String? error;
+  @override
+  void initState() {
+    super.initState();
+    busy = true;
+    RequestPushService.restore().then((value) {
+      if (mounted) setState(() => enabled = value);
+    }).catchError((Object _) {
+      // A transient relay failure must not interrupt requests or trigger a new prompt.
+    }).whenComplete(() { if (mounted) setState(() => busy = false); });
+  }
   Future<void> enable() async {
     setState(() { busy = true; error = null; });
     try {
@@ -153,9 +177,9 @@ class _RequestNotificationButtonState extends State<RequestNotificationButton> {
   }
   @override
   Widget build(BuildContext context) => Column(children: [
-    OutlinedButton.icon(onPressed: busy ? null : enable,
+    OutlinedButton.icon(onPressed: busy || enabled ? null : enable,
       icon: Icon(enabled ? Icons.notifications_active : Icons.notifications_outlined),
-      label: Text(busy ? 'جاري التفعيل...' : enabled ? 'إشعارات هذا الجهاز مفعّلة' : 'تفعيل إشعارات الطلبات على هذا الجهاز')),
+      label: Text(busy ? 'جاري التحقق...'  : enabled ? 'إشعارات هذا الجهاز مفعّلة' : 'تفعيل إشعارات الطلبات على هذا الجهاز')),
     if (enabled && kIsWeb) TextButton.icon(onPressed: busy ? null : testPush, icon: const Icon(Icons.send), label: const Text('تجربة إشعار')),
     if (error != null) Padding(padding: const EdgeInsets.all(8), child: Text(error!, style: const TextStyle(color: Colors.red))),
   ]);
