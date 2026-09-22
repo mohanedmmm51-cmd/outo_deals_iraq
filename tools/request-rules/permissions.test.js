@@ -58,3 +58,18 @@ test('web subscriptions stay private and secrets cannot be read even by admin', 
   await assertFails(setDoc(doc(customer, 'push_devices/customer/tokens/forged'), { subscription: { ...subscription, endpoint: 'https://127.0.0.1/' }, updatedAt: serverTimestamp() }));
   await assertFails(getDoc(doc(env.authenticatedContext('admin').firestore(), 'request_push_secrets/vapid')));
 });
+
+test('relay can check current admin authorization without reading profiles or writing probe documents', async () => {
+ const customer = env.authenticatedContext('customer').firestore();
+ const admin = env.authenticatedContext('admin').firestore();
+ await assertSucceeds(getDoc(doc(customer, 'push_admin_checks/admin')));
+ await assertFails(getDoc(doc(customer, 'push_admin_checks/shop')));
+ await assertFails(getDoc(doc(customer, 'users/admin')));
+ await assertFails(getDocs(collection(customer, 'push_admin_checks')));
+ await assertFails(setDoc(doc(admin, 'push_admin_checks/admin'), {admin:true}));
+ await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'push_admin_checks/admin')));
+ await env.withSecurityRulesDisabled(async c => {await setDoc(doc(c.firestore(), 'users/revoked'), {role:'admin'});});
+ await assertSucceeds(getDoc(doc(customer, 'push_admin_checks/revoked')));
+ await env.withSecurityRulesDisabled(async c => {await setDoc(doc(c.firestore(), 'users/revoked'), {role:'customer'});});
+ await assertFails(getDoc(doc(customer, 'push_admin_checks/revoked')));
+});
