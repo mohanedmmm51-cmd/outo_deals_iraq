@@ -49,7 +49,9 @@ class _ProductRequestPageState extends State<ProductRequestPage> {
           'updatedAt': FieldValue.serverTimestamp(),
         });
       });
+      final notified = await RequestPushService.notify(request.id, 'created');
       if (!mounted) return;
+      if (!notified) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('انحفظ طلبك. إشعار الهاتف تعذّر مؤقتاً وراح نحاول مجدداً.')));
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ProductRequestDetailPage(id: request.id)));
     } catch (_) {
       if (mounted) setState(() { busy = false; error = 'تعذر إرسال الطلب. تأكد من الاتصال وحاول مجدداً.'; });
@@ -147,7 +149,9 @@ class _ProductRequestDetailPageState extends State<ProductRequestDetailPage> {
         'repliedBy': FirebaseAuth.instance.currentUser!.uid,
         'repliedAt': FieldValue.serverTimestamp(), 'updatedAt': FieldValue.serverTimestamp(),
       });
+      final notified = await RequestPushService.notify(widget.id, 'answered');
       if (mounted) {
+        if (!notified) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('انحفظ الرد. إشعار الهاتف تعذّر مؤقتاً وراح نحاول مجدداً.')));
         reply.clear(); price.clear();
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الرد للزبون')));
       }
